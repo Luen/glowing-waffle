@@ -1,0 +1,70 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+build/
+*.iml
+*.jks
+*.p8
+*.p12
+*.key
+*.pem
+*.crt
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Android
+android/.gradle/
+android/local.properties
+android/**/gradle-wrapper.jar
+android/app/debug
+android/app/profile
+android/app/release
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# iOS / macOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+macos/Pods/
+macos/Flutter/ephemeral/
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.hmap
+*.xcuserstate
+
+# Web
+web/.dart_tool/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Logs and temp
+*.log
+*.tmp
+.cache/
+
+# Kokoro TTS model files (large; use scripts/download_kokoro.ps1 or download manually)
+assets/tts/model.onnx
+assets/tts/voices.bin
