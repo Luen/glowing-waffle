@@ -1,0 +1,184 @@
+name: Release builds
+
+# Builds the app for every platform when a GitHub Release is published and
+# attaches the results to that release. Run it manually (workflow_dispatch) to
+# get the same builds as workflow artifacts; give a tag to also upload them to
+# that existing release.
+#
+# Native builds bundle the Kokoro model (~360 MB) downloaded at build time with
+# scripts/download_kokoro.sh; it is never committed. See issue #7 for moving to
+# a first-run download. Builds are unsigned; see the signing issue for secrets.
+
+on:
+  release:
+    types: [published]
+  # Validate changes to this workflow by building (no upload) on the PR.
+  pull_request:
+    paths: ['.github/workflows/release.yml']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to upload to (leave empty for artifacts only)
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/glowing-waffle
+          key: kokoro-multi-lang-v1_0
+      - run: scripts/download_kokoro.sh
+      - run: flutter pub get
+      - run: flutter build apk --release --split-per-abi
+      - run: flutter build appbundle --release
+      - name: Collect
+        run: |
+          mkdir -p dist
+          for f in build/app/outputs/flutter-apk/app-*-release.apk; do
+            cp "$f" "dist/glowing-waffle-android-$(basename "$f" | sed 's/^app-//; s/-release//')"
+          done
+          cp build/app/outputs/bundle/release/app-release.aab dist/glowing-waffle-android.aab
+          ls -lh dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android
+          path: dist/*
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      # No model download: web loads Kokoro from the CDN via kokoro-js.
+      - run: flutter pub get
+      - run: flutter build web --release
+      - run: mkdir -p dist && (cd build/web && zip -qr ../../dist/glowing-waffle-web.zip .) && ls -lh dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: web
+          path: dist/*
+
+  linux:
+    # Experimental: no linux/ folder is committed, so it is generated here.
+    # The Web Reader tab (webview_flutter) is unsupported on Linux.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ninja-build libgtk-3-dev clang cmake pkg-config liblzma-dev
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/glowing-waffle
+          key: kokoro-multi-lang-v1_0
+      - run: scripts/download_kokoro.sh
+      - run: flutter create --platforms=linux --org com.example --project-name glowing_waffle .
+      - run: flutter pub get
+      - run: flutter build linux --release
+      - run: mkdir -p dist && tar -C build/linux/x64/release/bundle -czf dist/glowing-waffle-linux-x64.tar.gz . && ls -lh dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux
+          path: dist/*
+
+  windows:
+    # Experimental: windows/ is generated here; Web Reader is unsupported.
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/glowing-waffle
+          key: kokoro-multi-lang-v1_0-windows
+      - run: scripts/download_kokoro.sh
+      - run: flutter create --platforms=windows --org com.example --project-name glowing_waffle .
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath dist/glowing-waffle-windows-x64.zip
+          Get-ChildItem dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: dist/*
+
+  apple:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/glowing-waffle
+          key: kokoro-multi-lang-v1_0-macos
+      - run: scripts/download_kokoro.sh
+      - run: flutter pub get
+      - name: macOS (unsigned)
+        run: flutter build macos --release
+      - name: iOS (no codesign)
+        run: flutter build ios --release --no-codesign
+      - name: Collect
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent "build/macos/Build/Products/Release/glowing_waffle.app" dist/glowing-waffle-macos-unsigned.zip
+          mkdir -p Payload && cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qr dist/glowing-waffle-ios-unsigned.ipa Payload
+          ls -lh dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: apple
+          path: dist/*
+
+  publish:
+    needs: [android, web, linux, windows, apple]
+    # Upload whatever built; experimental desktop failures don't block the rest.
+    if: ${{ !cancelled() && (github.event_name == 'release' || inputs.tag != '') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - run: ls -lh dist
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.TAG }}
+          files: dist/*
+          fail_on_unmatched_files: false
