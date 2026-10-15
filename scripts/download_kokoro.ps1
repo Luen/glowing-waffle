@@ -1,4 +1,5 @@
-# Download Kokoro TTS model (sherpa-onnx) and place model.onnx, tokens.txt, voices.bin into assets/tts/
+# Download Kokoro TTS model (sherpa-onnx) and place model.onnx, tokens.txt, voices.bin,
+# lexicon-us-en.txt and espeak-ng-data.zip into assets/tts/
 # Required for native (Android/iOS) TTS. See: https://k2-fsa.github.io/sherpa/onnx/tts/pretrained_models/kokoro.html
 
 $ErrorActionPreference = "Stop"
@@ -34,7 +35,7 @@ if (-not (Test-Path $extractDir)) {
 }
 
 New-Item -ItemType Directory -Force -Path $assetsTts | Out-Null
-$files = @("model.onnx", "tokens.txt", "voices.bin")
+$files = @("model.onnx", "tokens.txt", "voices.bin", "lexicon-us-en.txt")
 foreach ($f in $files) {
     $src = Join-Path $extractDir $f
     $dst = Join-Path $assetsTts $f
@@ -45,6 +46,11 @@ foreach ($f in $files) {
         Write-Host "  Warning: $f not found in archive" -ForegroundColor Yellow
     }
 }
+
+$zip = Join-Path $assetsTts "espeak-ng-data.zip"
+if (Test-Path $zip) { Remove-Item $zip }
+Compress-Archive -Path (Join-Path $extractDir "espeak-ng-data") -DestinationPath $zip
+Write-Host "  Created espeak-ng-data.zip" -ForegroundColor Green
 
 Write-Host "Done. Kokoro assets are in $assetsTts" -ForegroundColor Green
 Write-Host "Run: flutter pub get && flutter run -d android  (or -d chrome for web)" -ForegroundColor Cyan
