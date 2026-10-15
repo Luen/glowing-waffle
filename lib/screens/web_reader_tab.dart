@@ -71,7 +71,7 @@ class _WebReaderTabState extends ConsumerState<WebReaderTab> {
 
   /// Injects script to extract paragraph text or selection and send to Dart.
   Future<void> _extractAndSend() async {
-    const String script = '''
+    final String script = '''
       (function() {
         var text = '';
         var sel = window.getSelection();
@@ -86,11 +86,11 @@ class _WebReaderTabState extends ConsumerState<WebReaderTab> {
           });
           text = parts.join('\\n\\n');
         }
-        if (text && window.$_textChannelName) {
-          window.$_textChannelName.postMessage(text);
+        if (text && window.__CHANNEL__) {
+          window.__CHANNEL__.postMessage(text);
         }
       })();
-    '''.replaceAll('$_textChannelName', _textChannelName);
+    '''.replaceAll('__CHANNEL__', _textChannelName);
 
     await _webController.runJavaScript(script);
   }

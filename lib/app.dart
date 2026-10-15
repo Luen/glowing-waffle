@@ -20,16 +20,14 @@ class _GlowingWaffleAppState extends ConsumerState<GlowingWaffleApp> {
   Future<void> _handlePlay(String text) async {
     if (text.trim().isEmpty) return;
     final notifier = ref.read(ttsStateProvider.notifier);
-    notifier.setStatus(AppStatus.generatingAudio);
+    notifier.clearError();
+    // synthesizeAndPlay resolves once playback has finished.
+    notifier.setStatus(AppStatus.playing);
     try {
       await _engine.synthesizeAndPlay(text);
-      notifier.setStatus(AppStatus.playing);
-      // Engine may play async; assume playing until we add completion callback.
-      await Future<void>.delayed(const Duration(seconds: 1));
-    } catch (e, st) {
-      notifier.setStatus(AppStatus.error, errorMessage: e.toString());
-    } finally {
       notifier.setStatus(AppStatus.idle);
+    } catch (e) {
+      notifier.setStatus(AppStatus.error, errorMessage: e.toString());
     }
   }
 

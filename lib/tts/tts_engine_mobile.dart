@@ -1,15 +1,16 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:sherpa_onnx/sherpa_onnx.dart';
+import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa_onnx;
 
 import 'tts_engine.dart';
 
 /// Native implementation: Kokoro 82M via Sherpa-ONNX. Model files must be in assets/tts/.
 class TtsEngineMobile implements TtsEngine {
-  OfflineTts? _tts;
+  sherpa_onnx.OfflineTts? _tts;
   String? _tempDir;
   final AudioPlayer _player = AudioPlayer();
 
@@ -44,35 +45,35 @@ class TtsEngineMobile implements TtsEngine {
     return _tempDir!;
   }
 
-  Future<OfflineTts> _getTts() async {
+  Future<sherpa_onnx.OfflineTts> _getTts() async {
     if (_tts != null) return _tts!;
     sherpa_onnx.initBindings();
     final modelDir = await _getModelDir();
     final modelPath = '$modelDir/model.onnx';
     final tokensPath = '$modelDir/tokens.txt';
     final voicesPath = File('$modelDir/voices.bin').existsSync() ? '$modelDir/voices.bin' : '';
-    final kokoroConfig = OfflineTtsKokoroModelConfig(
+    final kokoroConfig = sherpa_onnx.OfflineTtsKokoroModelConfig(
       model: modelPath,
       tokens: tokensPath,
       voices: voicesPath,
     );
-    final modelConfig = OfflineTtsModelConfig(
+    final modelConfig = sherpa_onnx.OfflineTtsModelConfig(
       kokoro: kokoroConfig,
       numThreads: 2,
       debug: false,
       provider: 'cpu',
     );
-    final config = OfflineTtsConfig(model: modelConfig);
-    _tts = OfflineTts(config);
+    final config = sherpa_onnx.OfflineTtsConfig(model: modelConfig);
+    _tts = sherpa_onnx.OfflineTts(config);
     return _tts!;
   }
 
-  Future<void> _playGenerated(GeneratedAudio audio) async {
+  Future<void> _playGenerated(sherpa_onnx.GeneratedAudio audio) async {
     final wavPath = await _writeWav(audio.samples, audio.sampleRate);
     await _player.setFilePath(wavPath);
     await _player.play();
     await _player.processingStateStream.firstWhere(
-      (s) => s == ProcessingState.completed || s == ProcessingState.stopped,
+      (s) => s == ProcessingState.completed || s == ProcessingState.idle,
     );
     try {
       File(wavPath).deleteSync();
