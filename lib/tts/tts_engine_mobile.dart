@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:archive/archive_io.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
@@ -8,7 +9,12 @@ import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa_onnx;
 
 import 'tts_engine.dart';
 
-/// Native implementation: Kokoro 82M via Sherpa-ONNX. Model files must be in assets/tts/.
+/// Native implementation: Kokoro 82M via Sherpa-ONNX. Model files must be in
+/// assets/tts/ (run scripts/download_kokoro.sh or scripts/download_kokoro.ps1).
+///
+/// Kokoro v1.0 (multi-lang) needs, besides model/tokens/voices, the espeak-ng
+/// phonemizer data and an English lexicon. Flutter assets are not recursive,
+/// so espeak-ng-data is bundled as a zip and extracted on first use.
 class TtsEngineMobile implements TtsEngine {
   sherpa_onnx.OfflineTts? _tts;
   String? _tempDir;
@@ -19,6 +25,15 @@ class TtsEngineMobile implements TtsEngine {
     'model.onnx',
     'tokens.txt',
     'voices.bin',
+    'lexicon-us-en.txt',
+  ];
+  static const String _espeakZip = 'espeak-ng-data.zip';
+  static const List<String> _required = [
+    'model.onnx',
+    'tokens.txt',
+    'voices.bin',
+    'lexicon-us-en.txt',
+    'espeak-ng-data',
   ];
 
   Future<String> _getModelDir() async {
@@ -34,11 +49,24 @@ class TtsEngineMobile implements TtsEngine {
         await file.writeAsBytes(bytes.buffer.asUint8List());
       } catch (_) {}
     }
-    final modelFile = File('${modelDir.path}/model.onnx');
-    if (!await modelFile.exists()) {
+    final espeakDir = Directory('${modelDir.path}/espeak-ng-data');
+    if (!await espeakDir.exists()) {
+      try {
+        final bytes = await rootBundle.load('$_assetPrefix$_espeakZip');
+        final archive = ZipDecoder().decodeBytes(bytes.buffer.asUint8List());
+        await extractArchiveToDisk(archive, modelDir.path);
+      } catch (_) {}
+    }
+    final missing = [
+      for (final name in _required)
+        if (!File('${modelDir.path}/$name').existsSync() &&
+            !Directory('${modelDir.path}/$name').existsSync())
+          name,
+    ];
+    if (missing.isNotEmpty) {
       throw StateError(
-        'Kokoro model not found. Add model.onnx and tokens.txt to assets/tts/. '
-        'Download from https://k2-fsa.github.io/sherpa/onnx/tts/pretrained_models/kokoro.html',
+        'Kokoro model files missing from assets/tts/: ${missing.join(', ')}. '
+        'Run scripts/download_kokoro.sh (or .ps1) and rebuild.',
       );
     }
     _tempDir = modelDir.path;
@@ -51,11 +79,13 @@ class TtsEngineMobile implements TtsEngine {
     final modelDir = await _getModelDir();
     final modelPath = '$modelDir/model.onnx';
     final tokensPath = '$modelDir/tokens.txt';
-    final voicesPath = File('$modelDir/voices.bin').existsSync() ? '$modelDir/voices.bin' : '';
     final kokoroConfig = sherpa_onnx.OfflineTtsKokoroModelConfig(
       model: modelPath,
       tokens: tokensPath,
-      voices: voicesPath,
+      voices: '$modelDir/voices.bin',
+      dataDir: '$modelDir/espeak-ng-data',
+      lexicon: '$modelDir/lexicon-us-en.txt',
+      lang: 'en-us',
     );
     final modelConfig = sherpa_onnx.OfflineTtsModelConfig(
       kokoro: kokoroConfig,

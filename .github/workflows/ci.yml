@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build web
+
+  tts-smoke:
+    # End-to-end CPU synthesis with the same model/config as the native app
+    # and the same kokoro-js model + audio handling as the web bridge.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/glowing-waffle
+          key: kokoro-multi-lang-v1_0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - run: pip install -r scripts/requirements.txt
+      - run: scripts/download_kokoro.sh
+      - run: python scripts/smoke_tts.py --out native-smoke.wav
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci && node smoke.mjs ../../web-smoke.wav
+        working-directory: scripts/web_smoke
+      - uses: actions/upload-artifact@v7
+        with:
+          name: smoke-audio
+          path: '*-smoke.wav'

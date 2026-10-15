@@ -1,14 +1,16 @@
 /**
- * TTS bridge for Flutter web: Kokoro (primary, WebGPU/WASM) and Kitten (fallback, WASM).
+ * TTS bridge for Flutter web: Kokoro 82M via kokoro-js, on WebGPU when available
+ * with a WASM fallback. (Earlier versions called the WASM path "Kitten", but it
+ * always loaded Kokoro; KittenTTS is not used on web yet.)
  * Exposes window.glowingWaffleTts = { synthesize(text), getEngineName(), init() }.
  */
 (function () {
-  const STORAGE_KEY = 'glowing_waffle_tts_engine';
+  const STORAGE_KEY = 'glowing_waffle_tts_engine_v2';
   const SAMPLE_RATE = 24000;
 
   let kokoroTts = null;
-  let kittenPipeline = null;
-  let currentEngine = null; // 'kokoro' | 'kitten'
+  let kokoroWasm = null;
+  let currentEngine = null; // 'kokoro' | 'kokoro-wasm'
   let audioContext = null;
 
   function getAudioContext() {
@@ -46,7 +48,7 @@
         if (adapter) return 'kokoro';
       }
     } catch (_) {}
-    return 'kitten';
+    return 'kokoro-wasm';
   }
 
   /**
@@ -65,17 +67,17 @@
   }
 
   /**
-   * Load Kitten TTS (Nano) via Transformers.js pipeline. WASM-only, no WebGPU.
+   * Load Kokoro on WASM only (fallback when WebGPU is missing or fails).
    */
-  async function loadKitten() {
-    if (kittenPipeline) return kittenPipeline;
+  async function loadKokoroWasm() {
+    if (kokoroWasm) return kokoroWasm;
     const mod = await import('https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js');
     const KokoroTTS = mod.default || mod.KokoroTTS;
-    kittenPipeline = await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX', {
+    kokoroWasm = await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX', {
       dtype: 'q8',
       device: 'wasm',
     });
-    return kittenPipeline;
+    return kokoroWasm;
   }
 
   /**
@@ -84,6 +86,8 @@
   function audioToFloat32(audio) {
     if (!audio) throw new Error('No audio returned');
     if (audio instanceof Float32Array) return audio;
+    // kokoro-js returns a Transformers.js RawAudio { audio, sampling_rate }.
+    if (audio.audio) return audio.audio instanceof Float32Array ? audio.audio : new Float32Array(audio.audio);
     if (audio.samples) return audio.samples instanceof Float32Array ? audio.samples : new Float32Array(audio.samples);
     if (typeof audio.data === 'function') {
       const d = audio.data();
@@ -99,8 +103,8 @@
     return audioToFloat32(audio);
   }
 
-  async function synthesizeKitten(text) {
-    const tts = await loadKitten();
+  async function synthesizeKokoroWasm(text) {
+    const tts = await loadKokoroWasm();
     const audio = await tts.generate(text, { voice: 'af_heart' });
     return audioToFloat32(audio);
   }
@@ -110,9 +114,9 @@
    */
   async function init() {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === 'kitten') {
-      currentEngine = 'kitten';
-      await loadKitten();
+    if (stored === 'kokoro-wasm') {
+      currentEngine = 'kokoro-wasm';
+      await loadKokoroWasm();
       return currentEngine;
     }
     try {
@@ -122,16 +126,16 @@
         currentEngine = 'kokoro';
         localStorage.setItem(STORAGE_KEY, 'kokoro');
       } else {
-        await loadKitten();
-        currentEngine = 'kitten';
-        localStorage.setItem(STORAGE_KEY, 'kitten');
+        await loadKokoroWasm();
+        currentEngine = 'kokoro-wasm';
+        localStorage.setItem(STORAGE_KEY, 'kokoro-wasm');
       }
     } catch (err) {
-      console.warn('Kokoro failed, falling back to Kitten', err);
+      console.warn('Kokoro failed, falling back to Kokoro WASM', err);
       try {
-        await loadKitten();
-        currentEngine = 'kitten';
-        localStorage.setItem(STORAGE_KEY, 'kitten');
+        await loadKokoroWasm();
+        currentEngine = 'kokoro-wasm';
+        localStorage.setItem(STORAGE_KEY, 'kokoro-wasm');
       } catch (e) {
         throw new Error('TTS init failed: ' + (e && e.message));
       }
@@ -150,15 +154,15 @@
       if (currentEngine === 'kokoro') {
         samples = await synthesizeKokoro(text);
       } else {
-        samples = await synthesizeKitten(text);
+        samples = await synthesizeKokoroWasm(text);
       }
     } catch (err) {
       if (currentEngine === 'kokoro') {
         try {
-          currentEngine = 'kitten';
-          localStorage.setItem(STORAGE_KEY, 'kitten');
-          await loadKitten();
-          samples = await synthesizeKitten(text);
+          currentEngine = 'kokoro-wasm';
+          localStorage.setItem(STORAGE_KEY, 'kokoro-wasm');
+          await loadKokoroWasm();
+          samples = await synthesizeKokoroWasm(text);
         } catch (e2) {
           throw err;
         }

@@ -69,3 +69,6 @@ Thumbs.db
 assets/tts/model.onnx
 assets/tts/voices.bin
 android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+assets/tts/lexicon-us-en.txt
+assets/tts/espeak-ng-data.zip
+scripts/web_smoke/node_modules/
