@@ -17,13 +17,15 @@ class TtsAppState {
   final AppStatus status;
   final String? errorMessage;
 
+  /// Returns a copy. Pass [clearError] to drop the current error message.
   TtsAppState copyWith({
     AppStatus? status,
     String? errorMessage,
+    bool clearError = false,
   }) {
     return TtsAppState(
       status: status ?? this.status,
-      errorMessage: errorMessage ?? this.errorMessage,
+      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
 }

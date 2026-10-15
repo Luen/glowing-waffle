@@ -16,6 +16,6 @@ class TtsStateNotifier extends StateNotifier<TtsAppState> {
   }
 
   void clearError() {
-    state = state.copyWith(errorMessage: null);
+    state = state.copyWith(clearError: true);
   }
 }

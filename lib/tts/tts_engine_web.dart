@@ -1,33 +1,29 @@
-import 'dart:js_util';
+import 'dart:js_interop';
 
 import 'tts_engine.dart';
 
-/// Web implementation (Kokoro primary + Kitten fallback via tts_bridge.js).
+/// JS bridge exposed by `web/tts_bridge.js` as `window.glowingWaffleTts`.
+extension type _TtsBridge._(JSObject _) implements JSObject {
+  external JSPromise<JSAny?> synthesize(JSString text);
+  external JSString getEngineName();
+}
+
+@JS('glowingWaffleTts')
+external _TtsBridge? get _bridge;
+
+/// Web implementation (Kokoro via WebGPU, falling back to Kokoro on WASM)
+/// through tts_bridge.js.
 class TtsEngineWeb implements TtsEngine {
-  Object? _ttsBridge;
-
-  Object? get _bridge {
-    _ttsBridge ??= _getGlobal('glowingWaffleTts');
-    return _ttsBridge;
-  }
-
-  dynamic _getGlobal(String name) {
-    return _getProperty(globalThis, name);
-  }
-
-  dynamic _getProperty(Object o, String name) {
-    return getProperty<Object?>(o, name);
-  }
-
   @override
   Future<void> synthesizeAndPlay(String text) async {
     if (text.trim().isEmpty) return;
     final bridge = _bridge;
     if (bridge == null) {
-      throw StateError('TTS bridge (glowingWaffleTts) not loaded. Ensure tts_bridge.js is loaded.');
+      throw StateError(
+        'TTS bridge (glowingWaffleTts) not loaded. Ensure tts_bridge.js is loaded.',
+      );
     }
-    final promise = callMethod<Object?>(bridge, 'synthesize', [text]);
-    await promiseToFuture(promise);
+    await bridge.synthesize(text.toJS).toDart;
   }
 
   @override
