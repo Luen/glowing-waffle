@@ -8,14 +8,17 @@ import 'tts/tts_engine.dart';
 import 'tts/tts_engine_impl.dart';
 
 class GlowingWaffleApp extends ConsumerStatefulWidget {
-  const GlowingWaffleApp({super.key});
+  const GlowingWaffleApp({super.key, this.engine});
+
+  /// Override the platform TTS engine (used by tests).
+  final TtsEngine? engine;
 
   @override
   ConsumerState<GlowingWaffleApp> createState() => _GlowingWaffleAppState();
 }
 
 class _GlowingWaffleAppState extends ConsumerState<GlowingWaffleApp> {
-  late final TtsEngine _engine = getTtsEngine();
+  late final TtsEngine _engine = widget.engine ?? getTtsEngine();
 
   Future<void> _handlePlay(String text) async {
     if (text.trim().isEmpty) return;
