@@ -1,10 +1,12 @@
 # Glowing Waffle – Read aloud
 
-Client-side TTS app: read aloud text and websites using **Kokoro** (and **Kitten** fallback on web). Runs fully on device; no server required.
+Client-side TTS app: read aloud text and websites using **Kokoro 82M**. Runs fully on device; no server required.
+
+> [KittenTTS](https://github.com/KittenML/KittenTTS) is not wired in yet: the old "Kitten" web fallback actually loaded Kokoro on WASM. See the open issues for the plan.
 
 ## Platforms
 
-- **Web**: Kokoro 82M (WebGPU or WASM) with Kitten-style fallback when constrained. Open the app in a browser and use the text field.
+- **Web**: Kokoro 82M via kokoro-js, on WebGPU when available and WASM otherwise. Open the app in a browser and use the text field.
 - **Android / iOS / macOS**: Kokoro 82M via Sherpa-ONNX, bundled in the app. Includes a **Web Reader** tab to load a URL and read extracted text aloud.
 
 ## Setup
@@ -20,23 +22,27 @@ Client-side TTS app: read aloud text and websites using **Kokoro** (and **Kitten
    ```
 
 3. **Native (Android/iOS/macOS) – Kokoro model**  
-   For local TTS on device, add the Kokoro model files under `assets/tts/`:
-   - `model.onnx`
-   - `tokens.txt`
-   - `voices.bin` (recommended)
+   Native builds run Kokoro v1.0 through sherpa-onnx and need these files in `assets/tts/`
+   (all git-ignored except `tokens.txt`):
+   - `model.onnx`, `tokens.txt`, `voices.bin`
+   - `lexicon-us-en.txt`
+   - `espeak-ng-data.zip` (the espeak-ng phonemizer data, zipped because Flutter assets are not recursive; the app extracts it on first run)
 
-   **Option A – Download script (Windows PowerShell):**
+   **Linux / macOS:**
+
+   ```bash
+   scripts/download_kokoro.sh
+   ```
+
+   **Windows (PowerShell):**
 
    ```powershell
    .\scripts\download_kokoro.ps1
    ```
 
-   This downloads the sherpa-onnx Kokoro v1.0 release and copies `model.onnx`, `tokens.txt`, and `voices.bin` into `assets/tts/`.
+   Both download the sherpa-onnx [kokoro-multi-lang-v1_0](https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2) release (~340 MB) and stage the files above. Without them, native builds show which files are missing; web does not need them.
 
-   **Option B – Manual:**  
-   Download [kokoro-multi-lang-v1_0.tar.bz2](https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2), extract it, and copy `model.onnx`, `tokens.txt`, and `voices.bin` from the extracted folder into `assets/tts/`.
-
-   Without these, the **Text** tab still works on **web**; **native** builds will show a clear error until the assets are added.
+   > Don't keep the model files in `assets/tts/` when running `flutter build web`, or they'll be copied into `build/web` (see the open issues).
 
 ## Run
 
@@ -70,16 +76,34 @@ Client-side TTS app: read aloud text and websites using **Kokoro** (and **Kitten
    flutter run -d macos
    ```
 
+## Checking it works (CPU, no device needed)
+
+```bash
+# Flutter: lint, widget tests, web build
+flutter analyze && flutter test && flutter build web
+
+# Native engine: same sherpa-onnx config as lib/tts/tts_engine_mobile.dart
+scripts/download_kokoro.sh
+python3 -m venv .venv && . .venv/bin/activate
+pip install -r scripts/requirements.txt
+python scripts/smoke_tts.py --out native-smoke.wav "Hello from Glowing Waffle."
+
+# Web engine: same kokoro-js model and audio handling as web/tts_bridge.js
+cd scripts/web_smoke && npm ci && node smoke.mjs ../../web-smoke.wav
+```
+
+CI (`.github/workflows/ci.yml`) runs all of the above and uploads both WAVs as an artifact.
+
 ## Project layout
 
 - `lib/` – Flutter app (Riverpod state, screens, TTS bridge).
 - `lib/tts/` – TTS engine interface and platform implementations (web vs native).
-- `web/` – Web entry and `tts_bridge.js` (Kokoro/Kitten and Web Audio).
-- `assets/tts/` – Place Kokoro `model.onnx`, `tokens.txt`, and `voices.bin` here for native (or run `scripts/download_kokoro.ps1`).
+- `web/` – Web entry and `tts_bridge.js` (Kokoro via kokoro-js and Web Audio).
+- `assets/tts/` – Kokoro model files for native (run `scripts/download_kokoro.sh` or `.ps1`).
 
 ## Architecture
 
 - **UI**: Single app with a **Text** tab (all platforms) and **Web Reader** tab (Android, iOS, macOS only; hidden on web).
 - **Bridge**: `TtsEngine` is implemented by `tts_engine_web.dart` (web) and `tts_engine_mobile.dart` (native), selected via conditional imports.
-- **Web**: `tts_bridge.js` loads Kokoro (or fallback), caches in session, and plays via the Web Audio API. Dart calls it with `dart:js_util`.
-- **Native**: Sherpa-ONNX loads Kokoro from assets, generates PCM, writes WAV to a temp file, and plays with `just_audio`.
+- **Web**: `tts_bridge.js` loads Kokoro (or fallback), caches in session, and plays via the Web Audio API. Dart calls it with `dart:js_interop`.
+- **Native**: Sherpa-ONNX loads Kokoro (with espeak-ng data and an en-US lexicon) from assets, generates PCM, writes WAV to a temp file, and plays with `just_audio`.
