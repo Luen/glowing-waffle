@@ -3,6 +3,11 @@
  * with a WASM fallback. (Earlier versions called the WASM path "Kitten", but it
  * always loaded Kokoro; KittenTTS is not used on web yet.)
  * Exposes window.glowingWaffleTts = { synthesize(text), getEngineName(), init() }.
+ *
+ * IMPORTANT: dtype must match the device. Quantized Kokoro (q8/q4) on the
+ * WebGPU execution provider produces corrupted, unintelligible audio that is
+ * misheard as a foreign language; WebGPU needs fp32, while WASM is fine (and
+ * fastest) with q8. See https://github.com/hexgrad/kokoro/blob/main/kokoro.js/README.md
  */
 (function () {
   const STORAGE_KEY = 'glowing_waffle_tts_engine_v2';
@@ -57,10 +62,13 @@
   async function loadKokoro() {
     if (kokoroTts) return kokoroTts;
     const device = navigator.gpu ? 'webgpu' : 'wasm';
+    // Quantized models are corrupted by the WebGPU execution provider, so use
+    // fp32 there; WASM handles q8 correctly and is far cheaper to download.
+    const dtype = device === 'webgpu' ? 'fp32' : 'q8';
     const mod = await import('https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js');
     const KokoroTTS = mod.default || mod.KokoroTTS;
     kokoroTts = await KokoroTTS.from_pretrained('onnx-community/Kokoro-82M-v1.0-ONNX', {
-      dtype: 'q8',
+      dtype: dtype,
       device: device,
     });
     return kokoroTts;
