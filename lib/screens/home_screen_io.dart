@@ -10,10 +10,14 @@ class HomeScreen extends ConsumerStatefulWidget {
     super.key,
     required this.onPlay,
     required this.onStop,
+    required this.onSave,
   });
 
   final void Function(String text) onPlay;
   final VoidCallback onStop;
+
+  /// Called with the text to export when Save is pressed.
+  final void Function(String text) onSave;
 
   @override
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
@@ -54,10 +58,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           TextTab(
             onPlay: widget.onPlay,
             onStop: widget.onStop,
+            onSave: widget.onSave,
           ),
           WebReaderTab(
             onExtractAndPlay: widget.onPlay,
             onStop: widget.onStop,
+            onSave: widget.onSave,
           ),
         ],
       ),
