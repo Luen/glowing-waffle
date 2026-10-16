@@ -25,4 +25,8 @@ class TtsStateNotifier extends Notifier<TtsAppState> {
   void setSpeed(double speed) {
     state = state.copyWith(speed: speed);
   }
+
+  void setBackend(TtsBackend backend) {
+    state = state.copyWith(backend: backend);
+  }
 }

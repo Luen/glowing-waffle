@@ -176,6 +176,11 @@ class TtsEngineMobile implements TtsEngine {
     if (speed > 0) _speed = speed;
   }
 
+  /// No-op: sherpa-onnx here always runs on the CPU. Only the web engine can
+  /// choose between WebGPU and WASM.
+  @override
+  Future<void> setBackend(TtsBackend backend) async {}
+
   @override
   Future<List<String>> voices() async => kKokoroVoices;
 }

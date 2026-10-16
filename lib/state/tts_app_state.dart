@@ -39,6 +39,30 @@ const List<String> kKokoroVoices = [
 /// Default voice used when nothing else is selected.
 const String kDefaultVoice = 'af_heart';
 
+/// Execution backend preference for TTS synthesis.
+///
+/// Only the web engine has more than one backend today: kokoro-js runs on
+/// WebGPU ("gpu") or on WASM ("cpu"). Engines with a single backend (the native
+/// sherpa-onnx engines) ignore this setting.
+enum TtsBackend {
+  /// Use the best accelerator available on this device.
+  auto('Auto', 'auto'),
+
+  /// Force the GPU path (WebGPU on web).
+  gpu('GPU (WebGPU)', 'gpu'),
+
+  /// Force the CPU path (WASM on web).
+  cpu('CPU (WASM)', 'cpu');
+
+  const TtsBackend(this.label, this.wireName);
+
+  /// Label shown in the UI.
+  final String label;
+
+  /// Value understood by `web/tts_bridge.js`.
+  final String wireName;
+}
+
 /// State held by the TTS app (status, error, playback settings).
 class TtsAppState {
   const TtsAppState({
@@ -46,6 +70,7 @@ class TtsAppState {
     this.errorMessage,
     this.voice = kDefaultVoice,
     this.speed = 1.0,
+    this.backend = TtsBackend.auto,
   });
 
   final AppStatus status;
@@ -57,6 +82,9 @@ class TtsAppState {
   /// Playback speed multiplier (0.5 - 2.0).
   final double speed;
 
+  /// Execution backend preference (see [TtsBackend]).
+  final TtsBackend backend;
+
   /// Returns a copy. Pass [clearError] to drop the current error message.
   TtsAppState copyWith({
     AppStatus? status,
@@ -64,12 +92,14 @@ class TtsAppState {
     bool clearError = false,
     String? voice,
     double? speed,
+    TtsBackend? backend,
   }) {
     return TtsAppState(
       status: status ?? this.status,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       voice: voice ?? this.voice,
       speed: speed ?? this.speed,
+      backend: backend ?? this.backend,
     );
   }
 }

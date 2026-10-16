@@ -11,11 +11,15 @@ class TextTab extends ConsumerStatefulWidget {
     super.key,
     required this.onPlay,
     required this.onStop,
+    this.showBackend = false,
   });
 
   /// Called with the current text when Play is pressed.
   final void Function(String text) onPlay;
   final VoidCallback onStop;
+
+  /// Shows the execution-backend picker (web only, see [PlaybackControls]).
+  final bool showBackend;
 
   @override
   ConsumerState<TextTab> createState() => _TextTabState();
@@ -57,7 +61,7 @@ class _TextTabState extends ConsumerState<TextTab> {
             ),
           ],
           const SizedBox(height: 16),
-          const PlaybackControls(),
+          PlaybackControls(showBackend: widget.showBackend),
           const SizedBox(height: 16),
           Row(
             children: [

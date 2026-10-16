@@ -17,6 +17,10 @@ abstract class TtsEngine {
   /// Sets the playback speed multiplier (0.5 - 2.0) for subsequent synthesis.
   Future<void> setSpeed(double speed) async {}
 
+  /// Selects the execution backend used for subsequent synthesis. An engine
+  /// with a single backend (the native engines) ignores this.
+  Future<void> setBackend(TtsBackend backend) async {}
+
   /// Voices this engine can speak with. Empty when not enumerable.
   Future<List<String>> voices() async => const [];
 }

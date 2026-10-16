@@ -4,12 +4,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/tts_providers.dart';
 import '../state/tts_app_state.dart';
 
-/// Voice and speed controls shared by the Text and Web Reader tabs.
+/// Voice, speed and (on web) acceleration controls shared by the Text and Web
+/// Reader tabs.
 ///
 /// The selected values are read by the app when Play is pressed; the engines
-/// apply them (kokoro-js `voice`/`speed`, sherpa-onnx `sid`/`speed`).
+/// apply them (kokoro-js `voice`/`speed`/`device`, sherpa-onnx `sid`/`speed`).
 class PlaybackControls extends ConsumerWidget {
-  const PlaybackControls({super.key});
+  const PlaybackControls({super.key, this.showBackend = false});
+
+  /// Shows the execution-backend picker. Only web has more than one backend,
+  /// so only the web home screen passes true.
+  final bool showBackend;
 
   static const double _minSpeed = 0.5;
   static const double _maxSpeed = 2.0;
@@ -68,6 +73,34 @@ class PlaybackControls extends ConsumerWidget {
             ),
           ],
         ),
+        if (showBackend)
+          Row(
+            children: [
+              const Icon(Icons.memory, size: 20),
+              const SizedBox(width: 12),
+              const Tooltip(
+                message: 'Choose CPU if playback sounds garbled.',
+                child: Text('Acceleration'),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: DropdownButton<TtsBackend>(
+                  value: state.backend,
+                  isExpanded: true,
+                  items: [
+                    for (final backend in TtsBackend.values)
+                      DropdownMenuItem<TtsBackend>(
+                        value: backend,
+                        child: Text(backend.label),
+                      ),
+                  ],
+                  onChanged: (backend) {
+                    if (backend != null) notifier.setBackend(backend);
+                  },
+                ),
+              ),
+            ],
+          ),
       ],
     );
   }
