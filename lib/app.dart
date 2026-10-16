@@ -30,6 +30,7 @@ class _GlowingWaffleAppState extends ConsumerState<GlowingWaffleApp> {
     try {
       await _engine.setVoice(settings.voice);
       await _engine.setSpeed(settings.speed);
+      await _engine.setBackend(settings.backend);
       await _engine.synthesizeAndPlay(text);
       notifier.setStatus(AppStatus.idle);
     } catch (e) {

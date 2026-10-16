@@ -28,6 +28,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       body: TextTab(
         onPlay: widget.onPlay,
         onStop: widget.onStop,
+        // The web engine can run on WebGPU or WASM, so let the user override.
+        showBackend: true,
       ),
     );
   }

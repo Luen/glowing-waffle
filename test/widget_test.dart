@@ -1,9 +1,12 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:glowing_waffle/app.dart';
+import 'package:glowing_waffle/providers/tts_providers.dart';
 import 'package:glowing_waffle/state/tts_app_state.dart';
 import 'package:glowing_waffle/tts/tts_engine.dart';
+import 'package:glowing_waffle/widgets/playback_controls.dart';
 
 class FakeEngine extends TtsEngine {
   FakeEngine({this.error});
@@ -11,6 +14,7 @@ class FakeEngine extends TtsEngine {
   final spoken = <String>[];
   String? lastVoice;
   double? lastSpeed;
+  TtsBackend? lastBackend;
 
   @override
   Future<void> synthesizeAndPlay(String text) async {
@@ -26,6 +30,11 @@ class FakeEngine extends TtsEngine {
   @override
   Future<void> setSpeed(double speed) async {
     lastSpeed = speed;
+  }
+
+  @override
+  Future<void> setBackend(TtsBackend backend) async {
+    lastBackend = backend;
   }
 }
 
@@ -93,5 +102,61 @@ void main() {
     await tester.enterText(find.byType(TextField).first, 'Again');
     await tapPlay(tester);
     expect(engine.lastVoice, 'am_adam');
+  });
+
+  testWidgets('hides the acceleration picker off web', (tester) async {
+    await pumpApp(tester, FakeEngine());
+    expect(find.text('Acceleration'), findsNothing);
+  }, skip: kIsWeb);
+
+  testWidgets('shows the acceleration picker on web', (tester) async {
+    await pumpApp(tester, FakeEngine());
+    expect(find.text('Acceleration'), findsOneWidget);
+  }, skip: !kIsWeb);
+
+  testWidgets('applies the selected acceleration backend before speaking',
+      (tester) async {
+    final engine = FakeEngine();
+    await pumpApp(tester, engine);
+
+    await tester.enterText(find.byType(TextField).first, 'Hello');
+    await tapPlay(tester);
+    expect(engine.lastBackend, TtsBackend.auto);
+
+    // The web home screen shows the picker; drive the same state here.
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(GlowingWaffleApp)),
+      listen: false,
+    );
+    container.read(ttsStateProvider.notifier).setBackend(TtsBackend.cpu);
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField).first, 'Again');
+    await tapPlay(tester);
+    expect(engine.lastBackend, TtsBackend.cpu);
+  });
+
+  testWidgets('acceleration picker lists the backends when shown',
+      (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: Scaffold(body: PlaybackControls(showBackend: true)),
+        ),
+      ),
+    );
+
+    expect(find.text('Acceleration'), findsOneWidget);
+    expect(container.read(ttsStateProvider).backend, TtsBackend.auto);
+
+    await tester.tap(find.text('Auto').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('CPU (WASM)').last);
+    await tester.pumpAndSettle();
+
+    expect(container.read(ttsStateProvider).backend, TtsBackend.cpu);
   });
 }

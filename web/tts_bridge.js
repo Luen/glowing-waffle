@@ -4,7 +4,8 @@
  * always loaded Kokoro; KittenTTS is not used on web yet.)
  * Exposes window.glowingWaffleTts = {
  *   synthesize(text), stop(), init(), checkHardware(), getEngineName(),
- *   getVoices(), getVoice(), setVoice(voice), getSpeed(), setSpeed(speed)
+ *   getVoices(), getVoice(), setVoice(voice), getSpeed(), setSpeed(speed),
+ *   setBackend(backend)
  * }.
  */
 (function () {
@@ -40,6 +41,8 @@
   let kokoroTts = null;
   let kokoroWasm = null;
   let currentEngine = null; // 'kokoro' | 'kokoro-wasm'
+  // Execution backend requested by the app: 'auto' | 'gpu' | 'cpu'.
+  let backendPreference = 'auto';
   let audioContext = null;
   let currentSource = null;
   let cancelled = false;
@@ -209,6 +212,24 @@
    * Initialize: run hardware check and load the selected engine.
    */
   async function init() {
+    // An explicit choice bypasses both the hardware probe and the cached
+    // decision below, so "auto" stays unaffected by a manual override.
+    if (backendPreference === 'cpu') {
+      await loadKokoroWasm();
+      currentEngine = 'kokoro-wasm';
+      return currentEngine;
+    }
+    if (backendPreference === 'gpu') {
+      try {
+        await loadKokoro();
+        currentEngine = 'kokoro';
+      } catch (err) {
+        console.warn('WebGPU backend failed, falling back to Kokoro WASM', err);
+        await loadKokoroWasm();
+        currentEngine = 'kokoro-wasm';
+      }
+      return currentEngine;
+    }
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored === 'kokoro-wasm') {
       currentEngine = 'kokoro-wasm';
@@ -281,6 +302,20 @@
     return currentEngine || '';
   }
 
+  /**
+   * Choose the execution backend: 'auto' (best available), 'gpu' (WebGPU) or
+   * 'cpu' (WASM). Anything else means 'auto'.
+   *
+   * The engine is re-selected on the next synthesis, which costs no download:
+   * already-loaded models stay cached.
+   */
+  function setBackend(backend) {
+    const next = backend === 'gpu' || backend === 'cpu' ? backend : 'auto';
+    if (next === backendPreference) return;
+    backendPreference = next;
+    currentEngine = null;
+  }
+
   function getVoices() {
     return VOICES.slice();
   }
@@ -319,5 +354,6 @@
     setVoice,
     getSpeed,
     setSpeed,
+    setBackend,
   };
 })();

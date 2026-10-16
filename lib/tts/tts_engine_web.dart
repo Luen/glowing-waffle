@@ -1,5 +1,6 @@
 import 'dart:js_interop';
 
+import '../state/tts_app_state.dart';
 import 'tts_engine.dart';
 
 /// JS bridge exposed by `web/tts_bridge.js` as `window.glowingWaffleTts`.
@@ -12,6 +13,7 @@ extension type _TtsBridge._(JSObject _) implements JSObject {
   external void setVoice(JSString voice);
   external JSNumber getSpeed();
   external void setSpeed(JSNumber speed);
+  external void setBackend(JSString backend);
 }
 
 @JS('glowingWaffleTts')
@@ -45,6 +47,11 @@ class TtsEngineWeb implements TtsEngine {
   @override
   Future<void> setSpeed(double speed) async {
     _bridge?.setSpeed(speed.toJS);
+  }
+
+  @override
+  Future<void> setBackend(TtsBackend backend) async {
+    _bridge?.setBackend(backend.wireName.toJS);
   }
 
   @override

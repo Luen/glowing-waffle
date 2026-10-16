@@ -6,7 +6,7 @@ Client-side TTS app: read aloud text and websites using **Kokoro 82M**. Runs ful
 
 ## Platforms
 
-- **Web**: Kokoro 82M via kokoro-js, on WebGPU when available and WASM otherwise. Open the app in a browser and use the text field.
+- **Web**: Kokoro 82M via kokoro-js, on WebGPU when available and WASM otherwise. Open the app in a browser and use the text field. The text field's **Acceleration** dropdown overrides the execution backend (`Auto`, `GPU (WebGPU)`, `CPU (WASM)`) — pick CPU if WebGPU output sounds garbled on your machine.
 - **Android / iOS / macOS**: Kokoro 82M via Sherpa-ONNX, bundled in the app. Includes a **Web Reader** tab to load a URL and read extracted text aloud.
 
 ## Setup
