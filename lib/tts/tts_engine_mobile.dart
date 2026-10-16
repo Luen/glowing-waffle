@@ -7,6 +7,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa_onnx;
 
+import '../state/tts_app_state.dart';
 import 'tts_engine.dart';
 
 /// Native implementation: Kokoro 82M via Sherpa-ONNX. Model files must be in
@@ -19,6 +20,12 @@ class TtsEngineMobile implements TtsEngine {
   sherpa_onnx.OfflineTts? _tts;
   String? _tempDir;
   final AudioPlayer _player = AudioPlayer();
+
+  /// Speaker id derived from the selected voice (list index in [kKokoroVoices]).
+  int _sid = 3; // af_heart
+
+  /// Playback speed multiplier for subsequent synthesis.
+  double _speed = 1.0;
 
   static const String _assetPrefix = 'assets/tts/';
   static const List<String> _assetNames = [
@@ -149,7 +156,7 @@ class TtsEngineMobile implements TtsEngine {
   Future<void> synthesizeAndPlay(String text) async {
     if (text.trim().isEmpty) return;
     final tts = await _getTts();
-    final audio = tts.generate(text: text);
+    final audio = tts.generate(text: text, sid: _sid, speed: _speed);
     await _playGenerated(audio);
   }
 
@@ -157,6 +164,20 @@ class TtsEngineMobile implements TtsEngine {
   Future<void> stop() async {
     await _player.stop();
   }
+
+  @override
+  Future<void> setVoice(String voice) async {
+    final index = kKokoroVoices.indexOf(voice);
+    if (index >= 0) _sid = index;
+  }
+
+  @override
+  Future<void> setSpeed(double speed) async {
+    if (speed > 0) _speed = speed;
+  }
+
+  @override
+  Future<List<String>> voices() async => kKokoroVoices;
 }
 
 TtsEngine getTtsEngineImpl() => TtsEngineMobile();

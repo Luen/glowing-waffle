@@ -5,7 +5,13 @@ import 'tts_engine.dart';
 /// JS bridge exposed by `web/tts_bridge.js` as `window.glowingWaffleTts`.
 extension type _TtsBridge._(JSObject _) implements JSObject {
   external JSPromise<JSAny?> synthesize(JSString text);
+  external void stop();
   external JSString getEngineName();
+  external JSArray<JSString> getVoices();
+  external JSString getVoice();
+  external void setVoice(JSString voice);
+  external JSNumber getSpeed();
+  external void setSpeed(JSNumber speed);
 }
 
 @JS('glowingWaffleTts')
@@ -28,7 +34,24 @@ class TtsEngineWeb implements TtsEngine {
 
   @override
   Future<void> stop() async {
-    // Web Audio playback cannot be stopped mid-buffer easily; no-op.
+    _bridge?.stop();
+  }
+
+  @override
+  Future<void> setVoice(String voice) async {
+    _bridge?.setVoice(voice.toJS);
+  }
+
+  @override
+  Future<void> setSpeed(double speed) async {
+    _bridge?.setSpeed(speed.toJS);
+  }
+
+  @override
+  Future<List<String>> voices() async {
+    final list = _bridge?.getVoices();
+    if (list == null) return const [];
+    return [for (final voice in list.toDart) voice.toDart];
   }
 }
 

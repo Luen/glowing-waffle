@@ -6,6 +6,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../providers/tts_providers.dart';
 import '../state/tts_app_state.dart';
+import '../widgets/playback_controls.dart';
 
 /// Tab for loading a URL and extracting text to read (mobile/macOS only).
 class WebReaderTab extends ConsumerStatefulWidget {
@@ -70,6 +71,10 @@ class _WebReaderTabState extends ConsumerState<WebReaderTab> {
   }
 
   /// Injects script to extract paragraph text or selection and send to Dart.
+  ///
+  /// Paragraphs are preferred because they also cover content inside
+  /// `article`/`main`; selecting those too used to read nested paragraphs
+  /// twice. Duplicate blocks are dropped as a second guard.
   Future<void> _extractAndSend() async {
     final String script = '''
       (function() {
@@ -78,11 +83,20 @@ class _WebReaderTabState extends ConsumerState<WebReaderTab> {
         if (sel && sel.toString().trim().length > 0) {
           text = sel.toString().trim();
         } else {
-          var nodes = document.querySelectorAll('p, article, main');
+          var nodes = document.querySelectorAll('p');
+          if (nodes.length === 0) {
+            nodes = document.querySelectorAll('article, main');
+          }
+          if (nodes.length === 0) {
+            nodes = document.querySelectorAll('h1, h2, h3, li, blockquote');
+          }
+          var seen = {};
           var parts = [];
           nodes.forEach(function(n) {
             var t = n.innerText ? n.innerText.trim() : '';
-            if (t) parts.push(t);
+            if (!t || seen[t]) return;
+            seen[t] = true;
+            parts.push(t);
           });
           text = parts.join('\\n\\n');
         }
@@ -128,17 +142,24 @@ class _WebReaderTabState extends ConsumerState<WebReaderTab> {
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: FilledButton.icon(
-            onPressed: isBusy
-                ? null
-                : () async {
-                    await _extractAndSend();
-                  },
-            icon: const Icon(Icons.article),
-            label: const Text('Extract & Read'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              FilledButton.icon(
+                onPressed: isBusy
+                    ? null
+                    : () async {
+                        await _extractAndSend();
+                      },
+                icon: const Icon(Icons.article),
+                label: const Text('Extract & Read'),
+              ),
+              const SizedBox(height: 12),
+              const PlaybackControls(),
+            ],
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         Expanded(
           child: WebViewWidget(controller: _webController),
         ),
