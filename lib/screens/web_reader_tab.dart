@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -14,10 +15,14 @@ class WebReaderTab extends ConsumerStatefulWidget {
     super.key,
     required this.onExtractAndPlay,
     required this.onStop,
+    required this.onSave,
   });
 
   final void Function(String text) onExtractAndPlay;
   final VoidCallback onStop;
+
+  /// Called with the extracted text when Save is pressed.
+  final void Function(String text) onSave;
 
   @override
   ConsumerState<WebReaderTab> createState() => _WebReaderTabState();
@@ -30,6 +35,9 @@ class _WebReaderTabState extends ConsumerState<WebReaderTab> {
   late final WebViewController _webController;
   static const String _textChannelName = 'TextChannel';
 
+  /// Completed by the page when it posts its text back; see [_extractText].
+  Completer<String>? _pendingText;
+
   @override
   void initState() {
     super.initState();
@@ -37,12 +45,7 @@ class _WebReaderTabState extends ConsumerState<WebReaderTab> {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..addJavaScriptChannel(
         _textChannelName,
-        onMessageReceived: (JavaScriptMessage message) {
-          final text = message.message.trim();
-          if (text.isNotEmpty) {
-            widget.onExtractAndPlay(text);
-          }
-        },
+        onMessageReceived: _handleExtractedText,
       )
       ..setNavigationDelegate(
         NavigationDelegate(
@@ -70,13 +73,11 @@ class _WebReaderTabState extends ConsumerState<WebReaderTab> {
     }
   }
 
-  /// Injects script to extract paragraph text or selection and send to Dart.
-  ///
-  /// Paragraphs are preferred because they also cover content inside
-  /// `article`/`main`; selecting those too used to read nested paragraphs
-  /// twice. Duplicate blocks are dropped as a second guard.
-  Future<void> _extractAndSend() async {
-    final String script = '''
+  /// Text extraction script injected into the page. Paragraphs are preferred
+  /// because they also cover content inside `article`/`main`; selecting those
+  /// too used to read nested paragraphs twice. Duplicate blocks are dropped as a
+  /// second guard.
+  String get _extractScript => '''
       (function() {
         var text = '';
         var sel = window.getSelection();
@@ -107,7 +108,44 @@ class _WebReaderTabState extends ConsumerState<WebReaderTab> {
     '''
         .replaceAll('__CHANNEL__', _textChannelName);
 
-    await _webController.runJavaScript(script);
+  /// Completes [_pendingText], if a caller is waiting for the page text.
+  void _handleExtractedText(JavaScriptMessage message) {
+    final text = message.message.trim();
+    final pending = _pendingText;
+    if (text.isEmpty || pending == null || pending.isCompleted) return;
+    pending.complete(text);
+  }
+
+  /// Extracts the current selection, or the page's paragraphs, and returns it.
+  ///
+  /// The page posts its text through JavaScript channel [_textChannelName];
+  /// calls that nothing answers (empty page, blocked JavaScript) resolve to an
+  /// empty string after a short wait instead of hanging.
+  Future<String> _extractText() async {
+    final completer = Completer<String>();
+    _pendingText = completer;
+    try {
+      await _webController.runJavaScript(_extractScript);
+      return await completer.future.timeout(const Duration(seconds: 5));
+    } on TimeoutException {
+      return '';
+    } finally {
+      _pendingText = null;
+    }
+  }
+
+  /// Reads the page's text aloud.
+  Future<void> _readPage() async {
+    final text = await _extractText();
+    if (text.isEmpty) return;
+    widget.onExtractAndPlay(text);
+  }
+
+  /// Saves the page's text as one audio file.
+  Future<void> _savePage() async {
+    final text = await _extractText();
+    if (text.isEmpty) return;
+    widget.onSave(text);
   }
 
   @override
@@ -148,14 +186,26 @@ class _WebReaderTabState extends ConsumerState<WebReaderTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              FilledButton.icon(
-                onPressed: canExtract
-                    ? () async {
-                        await _extractAndSend();
-                      }
-                    : null,
-                icon: const Icon(Icons.article),
-                label: const Text('Extract & Read'),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: canExtract ? _readPage : null,
+                      icon: const Icon(Icons.article),
+                      label: const Text('Extract & Read'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  OutlinedButton.icon(
+                    onPressed: canExtract ? _savePage : null,
+                    icon: const Icon(Icons.download),
+                    label: Text(
+                      state.status == AppStatus.exportingAudio
+                          ? 'Saving…'
+                          : 'Save WAV',
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               // The Web Reader only exists on native builds, which can pick a

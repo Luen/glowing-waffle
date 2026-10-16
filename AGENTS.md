@@ -56,6 +56,7 @@ python3 -m http.server 8099 -d build/web-preview   # build/web needs an http ori
 | the web audio path | `web/tts_bridge.js`, `lib/tts/tts_engine_web.dart` |
 | the native audio path | `lib/tts/tts_engine_mobile.dart` |
 | a playback setting (voice/speed/backend/model) | `lib/state/tts_app_state.dart` → `lib/providers/tts_providers.dart` → `lib/widgets/playback_controls.dart` → applied in `lib/app.dart` `_handlePlay` |
+| saving/sharing generated audio | `lib/app.dart` `_handleSave` → `lib/tts/tts_engine.dart` `renderSamples` → `lib/tts/wav.dart` → `lib/tts/audio_saver.dart` (+ `_io`/`_web`) |
 | which screen/tabs exist per platform | `lib/screens/home_screen.dart` (conditional import), `home_screen_web.dart`, `home_screen_io.dart` |
 | which engine is used | `lib/tts/tts_engine_impl.dart` (conditional import) |
 | which models exist, their files, archives, pins and voices | `lib/tts/tts_models.dart` (single source; mirrored by `scripts/smoke_tts.py`) |
@@ -84,8 +85,9 @@ hook, add it to the applied-on-Play list in `app.dart` and to the fake engine in
 ## The web bridge
 
 `web/tts_bridge.js` exposes `window.glowingWaffleTts` and is called from Dart
-through `dart:js_interop` extension types in `lib/tts/tts_engine_web.dart`. The
-JS object must expose exactly the names declared there.
+through `dart:js_interop` extension types in `lib/tts/tts_engine_web.dart` (and
+`lib/tts/audio_saver_web.dart`, which uses the same public GET to get at the
+bridge). The JS object must expose exactly the names declared there.
 
 Rules that are not obvious from reading the code:
 
@@ -225,16 +227,24 @@ A bad extraction shows up as a shorter/empty file (the archive decoder hands the
 callback entries with **no content** unless `storeData: true`), so check sizes,
 not just that files exist.
 
+Saved WAVs are the same audio as playback — both paths share
+`synthesizeChunk()` / one sherpa-onnx `generate` call — so a corrupt save means a
+corrupt playback path, not the exporter. `test/audio_export_test.dart` covers the
+header and PCM conversion; it does not cover audible quality.
+
 ## Testing
 
 - Tests live in `test/widget_test.dart` (app/UI behaviour, including the model
   and voice pickers), `test/model_store_test.dart` (the model download, for
   both models, against a fixture archive served from a local HTTP server; it is
-  `@TestOn('vm')` because it binds a real `HttpServer`) and
-  `test/text_chunker_test.dart` (the sentence splitter).
-  Widget tests inject a fake engine through `GlowingWaffleApp(engine: …)`, which
-  is the intended seam for exercising "settings reach the engine"; new
-  `TtsEngine` members must be added to that fake.
+  `@TestOn('vm')` because it binds a real `HttpServer`),
+  `test/text_chunker_test.dart` (the sentence splitter) and
+  `test/audio_export_test.dart` (WAV encoding, file names).
+  Widget tests inject a fake engine through `GlowingWaffleApp(engine: …)` and a
+  fake saver through `GlowingWaffleApp(audioSaver: …)`; those are the intended
+  seams for exercising "settings reach the engine" and "what would be written to
+  disk", and new `TtsEngine` members must be added to that fake.
+- Never let a widget test hit the real filesystem: always pass `audioSaver`.
 - Test behaviour, not implementation: UI → state, and state → engine call.
 - Write platform-specific assertions with `skip: kIsWeb` / `skip: !kIsWeb` so
   one file passes both on the VM and in Chrome; the Chrome run is what proves
@@ -262,6 +272,11 @@ not just that files exist.
 - **Never fake an engine.** The old "Kitten" web path actually loaded Kokoro and
   had to be renamed (#3). If a configuration is not actually supported on a
   platform, hide the option.
+- **Nothing is written to a user-visible location unless the user asks for it.**
+  Saving is opt-in per press; playback keeps using the temp file it deletes.
+- **Every engine in this app renders 24 kHz mono** (`kKokoroSampleRate`). If a
+  model with a different rate is ever added (#6), exported WAV headers and the
+  web chunk joins must follow the model, not this constant.
 - Check `flutter analyze` is clean *and* that generated/ignored directories are
   untouched; `web/`, `android/`, `ios/` and `macos/` are excluded from analysis.
 

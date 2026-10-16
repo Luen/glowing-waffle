@@ -11,6 +11,7 @@ class TextTab extends ConsumerStatefulWidget {
     super.key,
     required this.onPlay,
     required this.onStop,
+    required this.onSave,
     this.showBackend = false,
     this.showModelPicker = false,
   });
@@ -18,6 +19,9 @@ class TextTab extends ConsumerStatefulWidget {
   /// Called with the current text when Play is pressed.
   final void Function(String text) onPlay;
   final VoidCallback onStop;
+
+  /// Called with the current text when Save is pressed.
+  final void Function(String text) onSave;
 
   /// Shows the execution-backend picker (web only, see [PlaybackControls]).
   final bool showBackend;
@@ -74,7 +78,10 @@ class _TextTabState extends ConsumerState<TextTab> {
             showModelPicker: widget.showModelPicker,
           ),
           const SizedBox(height: 16),
-          Row(
+          // Wrap, not Row: three buttons with labels overflow narrow phones.
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
             children: [
               FilledButton.icon(
                 onPressed:
@@ -88,6 +95,17 @@ class _TextTabState extends ConsumerState<TextTab> {
                     state.status == AppStatus.playing ? widget.onStop : null,
                 icon: const Icon(Icons.stop),
                 label: const Text('Stop'),
+              ),
+              const SizedBox(width: 12),
+              OutlinedButton.icon(
+                onPressed:
+                    canPlay ? () => widget.onSave(_controller.text) : null,
+                icon: const Icon(Icons.download),
+                label: Text(
+                  state.status == AppStatus.exportingAudio
+                      ? 'Saving…'
+                      : 'Save WAV',
+                ),
               ),
             ],
           ),
