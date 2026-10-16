@@ -24,9 +24,12 @@ class _GlowingWaffleAppState extends ConsumerState<GlowingWaffleApp> {
     if (text.trim().isEmpty) return;
     final notifier = ref.read(ttsStateProvider.notifier);
     notifier.clearError();
+    final settings = ref.read(ttsStateProvider);
     // synthesizeAndPlay resolves once playback has finished.
     notifier.setStatus(AppStatus.playing);
     try {
+      await _engine.setVoice(settings.voice);
+      await _engine.setSpeed(settings.speed);
       await _engine.synthesizeAndPlay(text);
       notifier.setStatus(AppStatus.idle);
     } catch (e) {

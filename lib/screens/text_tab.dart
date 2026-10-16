@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/tts_providers.dart';
 import '../state/tts_app_state.dart';
+import '../widgets/playback_controls.dart';
 
 /// Tab for manual text input and Play/Stop.
 class TextTab extends ConsumerStatefulWidget {
@@ -55,6 +56,8 @@ class _TextTabState extends ConsumerState<TextTab> {
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ],
+          const SizedBox(height: 16),
+          const PlaybackControls(),
           const SizedBox(height: 16),
           Row(
             children: [

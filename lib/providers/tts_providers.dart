@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../state/tts_app_state.dart';
 
-/// Provides the current TTS app state (status, error).
+/// Provides the current TTS app state (status, error, voice, speed).
 final ttsStateProvider =
     StateNotifierProvider<TtsStateNotifier, TtsAppState>((ref) {
   return TtsStateNotifier();
@@ -17,5 +17,13 @@ class TtsStateNotifier extends StateNotifier<TtsAppState> {
 
   void clearError() {
     state = state.copyWith(clearError: true);
+  }
+
+  void setVoice(String voice) {
+    state = state.copyWith(voice: voice);
+  }
+
+  void setSpeed(double speed) {
+    state = state.copyWith(speed: speed);
   }
 }
