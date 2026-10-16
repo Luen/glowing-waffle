@@ -11,7 +11,9 @@
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
   <title>Read aloud</title>
   <link rel="manifest" href="manifest.json">
-  <script type="module" src="tts_bridge.js"></script>
+  <!-- Bump ?v when tts_bridge.js changes: it is a non-hashed asset, so browsers
+       may otherwise keep serving a stale copy from cache. -->
+  <script type="module" src="tts_bridge.js?v=3"></script>
   <script src="flutter_bootstrap.js" async></script>
 </head>
 <body>
