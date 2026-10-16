@@ -1,7 +1,7 @@
 import 'tts_engine.dart';
 
 /// Stub implementation for tests or when no platform implementation is used.
-class TtsEngineStub implements TtsEngine {
+class TtsEngineStub extends TtsEngine {
   @override
   Future<void> synthesizeAndPlay(String text) async {
     if (text.trim().isEmpty) return;

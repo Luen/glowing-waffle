@@ -2,7 +2,10 @@
  * TTS bridge for Flutter web: Kokoro 82M via kokoro-js, on WebGPU when available
  * with a WASM fallback. (Earlier versions called the WASM path "Kitten", but it
  * always loaded Kokoro; KittenTTS is not used on web yet.)
- * Exposes window.glowingWaffleTts = { synthesize(text), getEngineName(), init() }.
+ * Exposes window.glowingWaffleTts = {
+ *   synthesize(text), stop(), init(), checkHardware(), getEngineName(),
+ *   getVoices(), getVoice(), setVoice(voice), getSpeed(), setSpeed(speed)
+ * }.
  *
  * IMPORTANT: dtype must match the device. Quantized Kokoro (q8/q4) on the
  * WebGPU execution provider produces corrupted, unintelligible audio that is
@@ -11,12 +14,61 @@
  */
 (function () {
   const STORAGE_KEY = 'glowing_waffle_tts_engine_v2';
+  const SETTINGS_KEY = 'glowing_waffle_tts_settings_v1';
   const SAMPLE_RATE = 24000;
+
+  // Kokoro v1.0 English voices, in sherpa-onnx speaker-id order (the native
+  // engine uses the same order, so a voice chosen here can be reused there).
+  const VOICES = [
+    'af_alloy',
+    'af_aoede',
+    'af_bella',
+    'af_heart',
+    'af_jessica',
+    'af_kore',
+    'af_nicole',
+    'af_nova',
+    'af_river',
+    'af_sarah',
+    'af_sky',
+    'am_adam',
+    'am_echo',
+    'am_eric',
+    'am_fenrir',
+    'am_liam',
+    'am_michael',
+    'am_onyx',
+    'am_puck',
+    'am_santa',
+  ];
 
   let kokoroTts = null;
   let kokoroWasm = null;
   let currentEngine = null; // 'kokoro' | 'kokoro-wasm'
   let audioContext = null;
+  let currentSource = null;
+  let cancelled = false;
+
+  const settings = loadSettings();
+
+  function loadSettings() {
+    const defaults = { voice: 'af_heart', speed: 1.0 };
+    try {
+      const stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+      return {
+        voice: typeof stored.voice === 'string' ? stored.voice : defaults.voice,
+        speed: typeof stored.speed === 'number' ? stored.speed : defaults.speed,
+      };
+    } catch (_) {
+      return defaults;
+    }
+  }
+
+  function saveSettings() {
+    try {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    } catch (_) {}
+  }
 
   function getAudioContext() {
     if (!audioContext) {
@@ -26,7 +78,22 @@
   }
 
   /**
+   * Stop any in-flight playback and cancel queued synthesis.
+   */
+  function stop() {
+    cancelled = true;
+    if (currentSource) {
+      const source = currentSource;
+      currentSource = null;
+      try {
+        source.stop();
+      } catch (_) {}
+    }
+  }
+
+  /**
    * Play Float32Array mono audio at 24kHz via Web Audio API.
+   * Resolves when playback finishes or the source is stopped.
    */
   function playFloat32Array(samples) {
     const ctx = getAudioContext();
@@ -37,10 +104,39 @@
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.connect(ctx.destination);
+    currentSource = source;
     return new Promise((resolve) => {
-      source.onended = () => resolve();
+      source.onended = () => {
+        if (currentSource === source) currentSource = null;
+        resolve();
+      };
       source.start(0);
     });
+  }
+
+  /**
+   * Split long text into sentence-sized chunks so the first audio starts fast
+   * and memory stays bounded. Chunks are merged up to MAX_CHARS.
+   */
+  function splitSentences(text) {
+    const MAX_CHARS = 300;
+    const normalized = String(text).replace(/\s+/g, ' ').trim();
+    if (!normalized) return [];
+    const sentences = normalized.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g) || [normalized];
+    const chunks = [];
+    let buffer = '';
+    for (const sentence of sentences) {
+      const part = sentence.trim();
+      if (!part) continue;
+      if (buffer && buffer.length + 1 + part.length > MAX_CHARS) {
+        chunks.push(buffer);
+        buffer = part;
+      } else {
+        buffer = buffer ? buffer + ' ' + part : part;
+      }
+    }
+    if (buffer) chunks.push(buffer);
+    return chunks;
   }
 
   /**
@@ -107,13 +203,13 @@
 
   async function synthesizeKokoro(text) {
     const tts = await loadKokoro();
-    const audio = await tts.generate(text, { voice: 'af_heart' });
+    const audio = await tts.generate(text, { voice: settings.voice, speed: settings.speed });
     return audioToFloat32(audio);
   }
 
   async function synthesizeKokoroWasm(text) {
     const tts = await loadKokoroWasm();
-    const audio = await tts.generate(text, { voice: 'af_heart' });
+    const audio = await tts.generate(text, { voice: settings.voice, speed: settings.speed });
     return audioToFloat32(audio);
   }
 
@@ -152,44 +248,84 @@
   }
 
   /**
-   * Synthesize text and play. Returns a Promise that resolves when playback ends.
+   * Synthesize one chunk on the current engine, falling back to WASM once if
+   * the WebGPU engine fails.
+   */
+  async function synthesizeChunk(text) {
+    try {
+      return currentEngine === 'kokoro' ? await synthesizeKokoro(text) : await synthesizeKokoroWasm(text);
+    } catch (err) {
+      if (currentEngine === 'kokoro') {
+        currentEngine = 'kokoro-wasm';
+        localStorage.setItem(STORAGE_KEY, 'kokoro-wasm');
+        await loadKokoroWasm();
+        return synthesizeKokoroWasm(text);
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Synthesize text and play it sentence by sentence. Returns a Promise that
+   * resolves when playback ends or [stop] is called.
    */
   async function synthesize(text) {
     if (!text || String(text).trim() === '') return;
+    stop();
+    cancelled = false;
     if (!currentEngine) await init();
-    let samples;
-    try {
-      if (currentEngine === 'kokoro') {
-        samples = await synthesizeKokoro(text);
-      } else {
-        samples = await synthesizeKokoroWasm(text);
-      }
-    } catch (err) {
-      if (currentEngine === 'kokoro') {
-        try {
-          currentEngine = 'kokoro-wasm';
-          localStorage.setItem(STORAGE_KEY, 'kokoro-wasm');
-          await loadKokoroWasm();
-          samples = await synthesizeKokoroWasm(text);
-        } catch (e2) {
-          throw err;
-        }
-      } else {
-        throw err;
-      }
+
+    const chunks = splitSentences(text);
+    for (const chunk of chunks) {
+      if (cancelled) return;
+      const samples = await synthesizeChunk(chunk);
+      if (cancelled) return;
+      if (!samples || samples.length === 0) continue;
+      await playFloat32Array(samples);
     }
-    if (!samples || samples.length === 0) throw new Error('No audio generated');
-    await playFloat32Array(samples);
   }
 
   function getEngineName() {
     return currentEngine || '';
   }
 
+  function getVoices() {
+    return VOICES.slice();
+  }
+
+  function getVoice() {
+    return settings.voice;
+  }
+
+  function setVoice(voice) {
+    if (typeof voice === 'string' && voice) {
+      settings.voice = voice;
+      saveSettings();
+    }
+  }
+
+  function getSpeed() {
+    return settings.speed;
+  }
+
+  function setSpeed(speed) {
+    const value = Number(speed);
+    if (Number.isFinite(value) && value > 0) {
+      settings.speed = value;
+      saveSettings();
+    }
+  }
+
   window.glowingWaffleTts = {
     synthesize,
+    stop,
     getEngineName,
     init,
     checkHardware,
+    getVoices,
+    getVoice,
+    setVoice,
+    getSpeed,
+    setSpeed,
   };
 })();
