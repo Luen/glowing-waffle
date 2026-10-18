@@ -223,9 +223,10 @@ not just that files exist.
 ## Testing
 
 - Tests live in `test/widget_test.dart` (app/UI behaviour, including the model
-  and voice pickers) and `test/model_store_test.dart` (the model download, for
+  and voice pickers), `test/model_store_test.dart` (the model download, for
   both models, against a fixture archive served from a local HTTP server; it is
-  `@TestOn('vm')` because it binds a real `HttpServer`).
+  `@TestOn('vm')` because it binds a real `HttpServer`) and
+  `test/text_chunker_test.dart` (the sentence splitter).
   Widget tests inject a fake engine through `GlowingWaffleApp(engine: …)`, which
   is the intended seam for exercising "settings reach the engine"; new
   `TtsEngine` members must be added to that fake.
