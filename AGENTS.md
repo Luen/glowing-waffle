@@ -160,6 +160,11 @@ Rules that are not obvious from reading the code:
 - Keep `scripts/smoke_tts.py` (`ENGINES`), `tts_engine_mobile.dart` and the
   bridge's kokoro-js call in sync. The smoke tests are the only thing that
   catches drift between them.
+- **Third-party licences** live in `THIRD_PARTY_NOTICES.md`; add a row there when
+  a model, native library or bundled asset is added. Note that sherpa-onnx
+  compiles **espeak-ng (GPL-3.0-or-later)** into the native library, so native
+  builds contain GPL-3.0 code (#32); espeak-ng's data is downloaded with the
+  model too.
 
 ## Verifying audio — do not skip this
 
