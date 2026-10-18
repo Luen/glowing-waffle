@@ -1,24 +1,30 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:archive/archive_io.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa_onnx;
 
 import '../state/tts_app_state.dart';
+import 'model_progress.dart';
+import 'model_store.dart';
 import 'tts_engine.dart';
 
-/// Native implementation: Kokoro 82M via Sherpa-ONNX. Model files must be in
-/// assets/tts/ (run scripts/download_kokoro.sh or scripts/download_kokoro.ps1).
+/// Native implementation: Kokoro 82M via Sherpa-ONNX.
 ///
-/// Kokoro v1.0 (multi-lang) needs, besides model/tokens/voices, the espeak-ng
-/// phonemizer data and an English lexicon. Flutter assets are not recursive,
-/// so espeak-ng-data is bundled as a zip and extracted on first use.
+/// Kokoro v1.0 (multi-lang) needs model.onnx, tokens.txt, voices.bin, an
+/// English lexicon and the espeak-ng phonemizer data, ~350 MB in total. Those
+/// files are deliberately not bundled, because they made native bundles (and
+/// web builds) huge; the model is downloaded on first run into the app support
+/// directory, which the OS does not purge between runs (issue #7).
+///
+/// A build that declares `assets: [assets/tts/]` in pubspec.yaml is imported
+/// instead of downloaded, so offline development keeps working.
 class TtsEngineMobile implements TtsEngine {
   sherpa_onnx.OfflineTts? _tts;
-  String? _tempDir;
+  String? _modelDirPath;
   final AudioPlayer _player = AudioPlayer();
 
   /// Speaker id derived from the selected voice (list index in [kKokoroVoices]).
@@ -28,70 +34,83 @@ class TtsEngineMobile implements TtsEngine {
   double _speed = 1.0;
 
   static const String _assetPrefix = 'assets/tts/';
-  static const List<String> _assetNames = [
-    'model.onnx',
-    'tokens.txt',
-    'voices.bin',
-    'lexicon-us-en.txt',
-  ];
   static const String _espeakZip = 'espeak-ng-data.zip';
-  static const List<String> _required = [
-    'model.onnx',
-    'tokens.txt',
-    'voices.bin',
-    'lexicon-us-en.txt',
-    'espeak-ng-data',
-  ];
 
-  Future<String> _getModelDir() async {
-    if (_tempDir != null) return _tempDir!;
-    final dir = await getTemporaryDirectory();
-    final modelDir = Directory('${dir.path}/tts_model');
-    if (!await modelDir.exists()) await modelDir.create(recursive: true);
-    for (final name in _assetNames) {
-      try {
+  /// Model directory, in the app support directory, created on first use.
+  ///
+  /// The temp directory the model used to be copied into is purged by the OS,
+  /// which meant copying ~350 MB again on a later cold start.
+  Future<Directory> _modelDir() async {
+    final cached = _modelDirPath;
+    if (cached != null) return Directory(cached);
+    final support = await getApplicationSupportDirectory();
+    final dir = Directory('${support.path}/tts_model');
+    await dir.create(recursive: true);
+    await _importBundledAssets(dir);
+    return Directory(_modelDirPath = dir.path);
+  }
+
+  /// Copies a model bundled in `assets/tts/` into [modelDir].
+  ///
+  /// Nothing is declared there by default, and `rootBundle` then throws; that
+  /// is the normal download case, not an error.
+  Future<void> _importBundledAssets(Directory modelDir) async {
+    if (await File('${modelDir.path}/${kKokoroModelFiles.first}').exists()) {
+      return;
+    }
+    try {
+      for (final name in kKokoroModelFiles) {
         final bytes = await rootBundle.load('$_assetPrefix$name');
-        final file = File('${modelDir.path}/$name');
-        await file.parent.create(recursive: true);
-        await file.writeAsBytes(bytes.buffer.asUint8List());
-      } catch (_) {}
+        await File('${modelDir.path}/$name')
+            .writeAsBytes(bytes.buffer.asUint8List(), flush: true);
+      }
+      final zipped = await rootBundle.load('$_assetPrefix$_espeakZip');
+      final archive = ZipDecoder().decodeBytes(zipped.buffer.asUint8List());
+      await extractArchiveToDisk(archive, modelDir.path);
+    } catch (e) {
+      // Assets are only declared by opt-in dev builds, so a failed lookup is
+      // the normal path here and means the model gets downloaded instead. Any
+      // other failure (say, a full disk while copying) is not fatal either:
+      // downloadModel() reports its own error.
+      debugPrint('No bundled Kokoro model: $e');
     }
-    final espeakDir = Directory('${modelDir.path}/espeak-ng-data');
-    if (!await espeakDir.exists()) {
-      try {
-        final bytes = await rootBundle.load('$_assetPrefix$_espeakZip');
-        final archive = ZipDecoder().decodeBytes(bytes.buffer.asUint8List());
-        await extractArchiveToDisk(archive, modelDir.path);
-      } catch (_) {}
-    }
-    final missing = [
-      for (final name in _required)
-        if (!File('${modelDir.path}/$name').existsSync() &&
-            !Directory('${modelDir.path}/$name').existsSync())
-          name,
-    ];
-    if (missing.isNotEmpty) {
-      throw StateError(
-        'Kokoro model files missing from assets/tts/: ${missing.join(', ')}. '
-        'Run scripts/download_kokoro.sh (or .ps1) and rebuild.',
+  }
+
+  KokoroModelStore _store(Directory dir) => KokoroModelStore(
+        modelDir: dir,
+        onProgress: (progress) => modelDownloadProgress.value = progress,
       );
+
+  @override
+  Future<bool> isModelReady() async => _store(await _modelDir()).isReady();
+
+  @override
+  Future<void> downloadModel() async {
+    final dir = await _modelDir();
+    try {
+      await _store(dir).ensure();
+    } finally {
+      modelDownloadProgress.value = null;
     }
-    _tempDir = modelDir.path;
-    return _tempDir!;
   }
 
   Future<sherpa_onnx.OfflineTts> _getTts() async {
     if (_tts != null) return _tts!;
+    final modelDir = await _modelDir();
+    if (!await _store(modelDir).isReady()) {
+      throw StateError(
+        'The voice model is not installed yet. Download it first.',
+      );
+    }
     sherpa_onnx.initBindings();
-    final modelDir = await _getModelDir();
-    final modelPath = '$modelDir/model.onnx';
-    final tokensPath = '$modelDir/tokens.txt';
+    final modelPath = '${modelDir.path}/model.onnx';
+    final tokensPath = '${modelDir.path}/tokens.txt';
     final kokoroConfig = sherpa_onnx.OfflineTtsKokoroModelConfig(
       model: modelPath,
       tokens: tokensPath,
-      voices: '$modelDir/voices.bin',
-      dataDir: '$modelDir/espeak-ng-data',
-      lexicon: '$modelDir/lexicon-us-en.txt',
+      voices: '${modelDir.path}/voices.bin',
+      dataDir: '${modelDir.path}/$kEspeakDataDir',
+      lexicon: '${modelDir.path}/lexicon-us-en.txt',
       lang: 'en-us',
     );
     final modelConfig = sherpa_onnx.OfflineTtsModelConfig(

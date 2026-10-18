@@ -23,4 +23,17 @@ abstract class TtsEngine {
 
   /// Voices this engine can speak with. Empty when not enumerable.
   Future<List<String>> voices() async => const [];
+
+  /// Whether the engine can synthesize without fetching anything first.
+  ///
+  /// Engines whose model ships with the app, or is fetched by the browser, are
+  /// always ready. The native engine downloads its model on first run (issue
+  /// #7) and reports false until it has been installed.
+  Future<bool> isModelReady() async => true;
+
+  /// Fetches whatever [isModelReady] last reported as missing.
+  ///
+  /// No-op for engines that are always ready. Progress is reported through
+  /// [modelDownloadProgress] by the engine that implements this.
+  Future<void> downloadModel() async {}
 }

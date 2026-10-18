@@ -71,6 +71,7 @@ class TtsAppState {
     this.voice = kDefaultVoice,
     this.speed = 1.0,
     this.backend = TtsBackend.auto,
+    this.modelReady = true,
   });
 
   final AppStatus status;
@@ -85,6 +86,13 @@ class TtsAppState {
   /// Execution backend preference (see [TtsBackend]).
   final TtsBackend backend;
 
+  /// Whether the engine has everything it needs to synthesize.
+  ///
+  /// Starts out true so nothing flashes on launch; `app.dart` asks the engine
+  /// on startup and flips this to false when the native model still has to be
+  /// downloaded. Engines that need nothing (web) always report true.
+  final bool modelReady;
+
   /// Returns a copy. Pass [clearError] to drop the current error message.
   TtsAppState copyWith({
     AppStatus? status,
@@ -93,6 +101,7 @@ class TtsAppState {
     String? voice,
     double? speed,
     TtsBackend? backend,
+    bool? modelReady,
   }) {
     return TtsAppState(
       status: status ?? this.status,
@@ -100,6 +109,7 @@ class TtsAppState {
       voice: voice ?? this.voice,
       speed: speed ?? this.speed,
       backend: backend ?? this.backend,
+      modelReady: modelReady ?? this.modelReady,
     );
   }
 }

@@ -31,7 +31,7 @@ node --check web/tts_bridge.js
 End-to-end smoke tests use the same model and config as the app. CI runs both:
 
 ```bash
-scripts/download_kokoro.sh                     # stages ~360 MB into assets/tts/
+scripts/download_kokoro.sh                     # stages ~360 MB into assets/tts/ for the smoke test
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r scripts/requirements.txt
 python scripts/smoke_tts.py --out native-smoke.wav
@@ -42,7 +42,7 @@ Run it locally:
 
 ```bash
 flutter run -d chrome                          # web: no model download, Kokoro loads in-browser
-flutter run -d macos                           # native: needs assets/tts/ staged first
+flutter run -d macos                           # native: downloads the model on first run (~350 MB)
 flutter build web --release --output=build/web-preview
 python3 -m http.server 8099 -d build/web-preview   # build/web needs an http origin; file:// will not work
 ```
@@ -56,7 +56,7 @@ python3 -m http.server 8099 -d build/web-preview   # build/web needs an http ori
 | a playback setting (voice/speed/backend/model) | `lib/state/tts_app_state.dart` → `lib/providers/tts_providers.dart` → `lib/widgets/playback_controls.dart` → applied in `lib/app.dart` `_handlePlay` |
 | which screen/tabs exist per platform | `lib/screens/home_screen.dart` (conditional import), `home_screen_web.dart`, `home_screen_io.dart` |
 | which engine is used | `lib/tts/tts_engine_impl.dart` (conditional import) |
-| native model files | `scripts/download_kokoro.sh`, `scripts/download_kokoro.ps1`, `assets/tts/` |
+| native model files | `lib/tts/model_store.dart` (download + extract), `lib/tts/tts_engine_mobile.dart` (where they live), `scripts/download_kokoro.sh` (staging for the smoke test) |
 | CI / release builds | `.github/workflows/ci.yml`, `.github/workflows/release.yml` |
 
 ## Platform split
@@ -112,14 +112,29 @@ Rules that are not obvious from reading the code:
   `scripts/web_smoke/package.json` for the smoke test) plus
   `onnx-community/Kokoro-82M-v1.0-ONNX`. Downloads happen in the browser and are
   cached by the browser.
-- **Native** — `sherpa-onnx` plus files staged into `assets/tts/` by
-  `scripts/download_kokoro.sh` from the `kokoro-multi-lang-v1_0` tarball
-  (cache: `~/.cache/glowing-waffle`, shared with the CI cache key). Everything
-  except `assets/tts/.gitkeep` and `assets/tts/tokens.txt` is git-ignored; the
-  `assets/tts/` entry in `pubspec.yaml` must stay so the directory exists in a
-  clean checkout.
-- **Never leave the model in `assets/tts/` when building web** — it gets copied
-  into `build/web` and adds ~360 MB (#7).
+- **Native** — `sherpa-onnx` with the Kokoro v1.0 files (`model.onnx` 325 MB,
+  `voices.bin` 27 MB, `lexicon-us-en.txt`, `tokens.txt` and `espeak-ng-data/`).
+  They are **not bundled**: `lib/tts/model_store.dart` downloads
+  `kokoro-multi-lang-v1_0.tar.bz2` (~350 MB) on first run into the app **support**
+  directory (`<support>/tts_model`), verifies the pinned sha256, extracts only
+  the English files and deletes the archive. The OS does not purge the support
+  directory, unlike the temp directory this used to copy into on every cold
+  start. `--dart-define=KOKORO_MODEL_URL=… / KOKORO_MODEL_SHA256=…` points a
+  build at another (say, int8 or mirror) archive; an empty `KOKORO_MODEL_SHA256`
+  skips the check. Update the pin when the URL changes.
+- **Bundling is opt-in** — declaring `assets: [assets/tts/]` in `pubspec.yaml`
+  (with `scripts/download_kokoro.sh` staged) makes the app import that copy and
+  never download; leave the directory out of `pubspec.yaml` or a web build picks
+  up ~350 MB of model files. Only the smoke test needs `assets/tts/` staged now:
+  it loads the model with the same sherpa config and is what catches drift.
+- **Runtime download needs platform permissions**: Android's `INTERNET`
+  (`android/app/src/main/AndroidManifest.xml` — the *main* manifest, not just the
+  debug one) and macOS's `com.apple.security.network.client` in both
+  `macos/Runner/*.entitlements`. The WebView's own traffic is not affected by the
+  macOS entitlement; Dart's `HttpClient` is.
+- iOS backs up the support directory to iCloud, so the model is included in a
+  device backup today; excluding it needs `NSURLIsExcludedFromBackupKey`, see the
+  open issue.
 - **Voices** — one shared list, `kKokoroVoices` in `lib/state/tts_app_state.dart`
   (20 English ids in sherpa speaker-id order, so list index == native `sid`;
   kokoro-js uses the same ids on purpose). Anything that adds an engine has to
@@ -150,11 +165,32 @@ noise.
 For native, `scripts/smoke_tts.py` writes a WAV and CI uploads it as the
 `smoke-audio` artifact.
 
+The model download has two moving parts that fail silently if you only check
+that a future completed: the pinned sha256 and the tar layout (a top-level
+directory to strip, entries the engine does not need). Check both against the
+real archive, not only a fixture:
+
+```bash
+# 1. The store downloads, checksums and extracts the real 350 MB archive.
+#    (Serve the archive over loopback in a throwaway script and run
+#    KokoroModelStore against it; see the PR that added model_store.dart.)
+# 2. Feed what it extracted to sherpa, the same config the app uses:
+cp <extracted>/{model.onnx,tokens.txt,voices.bin,lexicon-us-en.txt} assets/tts/
+python3 -c "import shutil; shutil.make_archive('assets/tts/espeak-ng-data','zip','<extracted>','espeak-ng-data')"
+python scripts/smoke_tts.py --out /tmp/store-smoke.wav
+```
+
+A bad extraction shows up as a shorter/empty file (the archive decoder hands the
+callback entries with **no content** unless `storeData: true`), so check sizes,
+not just that files exist.
+
 ## Testing
 
-- All tests currently live in `test/widget_test.dart`. Widget tests inject a
-  fake engine through `GlowingWaffleApp(engine: …)`, which is the intended seam
-  for exercising "settings reach the engine".
+- Tests live in `test/widget_test.dart` (app/UI behaviour) and
+  `test/model_store_test.dart` (the model download, against a fixture archive
+  served from a local HTTP server). Widget tests inject a fake engine through
+  `GlowingWaffleApp(engine: …)`, which is the intended seam for exercising
+  "settings reach the engine"; new `TtsEngine` members must be added to that fake.
 - Test behaviour, not implementation: UI → state, and state → engine call.
 - Write platform-specific assertions with `skip: kIsWeb` / `skip: !kIsWeb` so
   one file passes both on the VM and in Chrome; the Chrome run is what proves
@@ -230,11 +266,8 @@ Then reference it from the PR ("Not in this PR: #NN") so the two stay connected.
 
 - #6 KittenTTS for real: model picker, per-engine voices; web stays Kokoro-only
   until there is a real web runtime.
-- #7 Model files bloat the web build and app bundles — move to a first-run
-  download with progress.
-- #8 Verify Android, iOS and macOS builds on real toolchains (macOS CI job,
-  `com.apple.security.network.client`, iOS minimum version for
-  `sherpa_onnx_ios`).
+- #8 Verify Android, iOS and macOS builds on real toolchains (macOS CI job, iOS
+  minimum version for `sherpa_onnx_ios`).
 - #11 Store signing for release builds (secrets required).
 - #14 Allow saving the generated audio to a file.
 - TTS settings are **not persisted** — voice, speed and backend reset on every

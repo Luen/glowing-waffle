@@ -29,4 +29,8 @@ class TtsStateNotifier extends Notifier<TtsAppState> {
   void setBackend(TtsBackend backend) {
     state = state.copyWith(backend: backend);
   }
+
+  void setModelReady(bool ready) {
+    state = state.copyWith(modelReady: ready);
+  }
 }

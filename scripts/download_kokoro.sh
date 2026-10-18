@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
-# Download the sherpa-onnx Kokoro v1.0 model and stage the files the native
-# app (and scripts/smoke_tts.py) need into assets/tts/:
+# Download the sherpa-onnx Kokoro v1.0 model and stage the files
+# scripts/smoke_tts.py needs into assets/tts/:
 #   model.onnx, tokens.txt, voices.bin, lexicon-us-en.txt, espeak-ng-data.zip
+#
+# The app no longer needs this: it downloads the model on first run (issue #7)
+# and only uses assets/tts/ when that directory is declared in pubspec.yaml.
+# Stage it anyway for offline development builds.
+#
 # Usage: scripts/download_kokoro.sh [cache_dir]
 set -euo pipefail
 

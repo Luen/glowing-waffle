@@ -113,6 +113,7 @@ class _WebReaderTabState extends ConsumerState<WebReaderTab> {
   Widget build(BuildContext context) {
     final state = ref.watch(ttsStateProvider);
     final isBusy = state.status != AppStatus.idle && state.status != AppStatus.error;
+    final canExtract = !isBusy && state.modelReady;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -146,11 +147,11 @@ class _WebReaderTabState extends ConsumerState<WebReaderTab> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               FilledButton.icon(
-                onPressed: isBusy
-                    ? null
-                    : () async {
+                onPressed: canExtract
+                    ? () async {
                         await _extractAndSend();
-                      },
+                      }
+                    : null,
                 icon: const Icon(Icons.article),
                 label: const Text('Extract & Read'),
               ),
