@@ -108,6 +108,11 @@ Rules that are not obvious from reading the code:
 5. The bridge persists two things in `localStorage` (settings, and the last
    *auto* engine decision). An explicit backend choice deliberately does not
    touch the auto decision, so overriding never contaminates Auto.
+6. `splitSentences()` in `web/tts_bridge.js` and `splitIntoChunks()` in
+   `lib/tts/text_chunker.dart` **must stay in sync**: both engines speak the
+   same text in the same sentence-sized chunks (300 chars), so the two
+   implementations are deliberately identical, down to the terminator-only
+   fallback. Change them together and update `test/text_chunker_test.dart`.
 
 ## Models, voices and assets
 
@@ -218,9 +223,10 @@ not just that files exist.
 ## Testing
 
 - Tests live in `test/widget_test.dart` (app/UI behaviour, including the model
-  and voice pickers) and `test/model_store_test.dart` (the model download, for
+  and voice pickers), `test/model_store_test.dart` (the model download, for
   both models, against a fixture archive served from a local HTTP server; it is
-  `@TestOn('vm')` because it binds a real `HttpServer`).
+  `@TestOn('vm')` because it binds a real `HttpServer`) and
+  `test/text_chunker_test.dart` (the sentence splitter).
   Widget tests inject a fake engine through `GlowingWaffleApp(engine: …)`, which
   is the intended seam for exercising "settings reach the engine"; new
   `TtsEngine` members must be added to that fake.
