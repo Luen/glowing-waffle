@@ -5,9 +5,10 @@ name: Release builds
 # get the same builds as workflow artifacts; give a tag to also upload them to
 # that existing release.
 #
-# Native builds bundle the Kokoro model (~360 MB) downloaded at build time with
-# scripts/download_kokoro.sh; it is never committed. See issue #7 for moving to
-# a first-run download. Builds are unsigned; see the signing issue for secrets.
+# The model (~350 MB) is not bundled any more: the app downloads it on first
+# run into its support directory (issue #7), so no build step needs
+# scripts/download_kokoro.sh and the artifacts stay small. Builds are unsigned;
+# see the signing issue for secrets.
 
 on:
   release:
@@ -41,11 +42,6 @@ jobs:
         with:
           channel: stable
           cache: true
-      - uses: actions/cache@v6
-        with:
-          path: ~/.cache/glowing-waffle
-          key: kokoro-multi-lang-v1_0
-      - run: scripts/download_kokoro.sh
       - run: flutter pub get
       - run: flutter build apk --release --split-per-abi
       - run: flutter build appbundle --release
@@ -92,11 +88,6 @@ jobs:
       - run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ninja-build libgtk-3-dev clang cmake pkg-config liblzma-dev
-      - uses: actions/cache@v6
-        with:
-          path: ~/.cache/glowing-waffle
-          key: kokoro-multi-lang-v1_0
-      - run: scripts/download_kokoro.sh
       - run: flutter create --platforms=linux --org com.example --project-name glowing_waffle .
       - run: flutter pub get
       - run: flutter build linux --release
@@ -118,11 +109,6 @@ jobs:
         with:
           channel: stable
           cache: true
-      - uses: actions/cache@v6
-        with:
-          path: ~/.cache/glowing-waffle
-          key: kokoro-multi-lang-v1_0-windows
-      - run: scripts/download_kokoro.sh
       - run: flutter create --platforms=windows --org com.example --project-name glowing_waffle .
       - run: flutter pub get
       - run: flutter build windows --release
@@ -144,11 +130,6 @@ jobs:
         with:
           channel: stable
           cache: true
-      - uses: actions/cache@v6
-        with:
-          path: ~/.cache/glowing-waffle
-          key: kokoro-multi-lang-v1_0-macos
-      - run: scripts/download_kokoro.sh
       - run: flutter pub get
       - name: macOS (unsigned)
         run: flutter build macos --release

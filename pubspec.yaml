@@ -16,6 +16,8 @@ dependencies:
   path_provider: ^2.1.2
   just_audio: ^0.10.0
   archive: ^4.5.2
+  # sha256 of the downloaded model archive (lib/tts/model_store.dart).
+  crypto: ^3.0.6
 
 dev_dependencies:
   flutter_test:
@@ -24,5 +26,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/tts/
+  # Deliberately no assets: the Kokoro model (~360 MB) is downloaded on first
+  # run into the app support directory instead of being bundled, which is what
+  # kept web builds and native bundles huge (issue #7). Declaring
+  # `assets: [assets/tts/]` again opts a dev build back into bundling, which
+  # lib/tts/tts_engine_mobile.dart detects and imports without downloading.

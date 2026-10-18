@@ -38,6 +38,9 @@ class _TextTabState extends ConsumerState<TextTab> {
   Widget build(BuildContext context) {
     final state = ref.watch(ttsStateProvider);
     final isBusy = state.status != AppStatus.idle && state.status != AppStatus.error;
+    // Without the model there is nothing to play yet; the setup card above
+    // explains why and offers the download.
+    final canPlay = !isBusy && state.modelReady;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -66,7 +69,7 @@ class _TextTabState extends ConsumerState<TextTab> {
           Row(
             children: [
               FilledButton.icon(
-                onPressed: isBusy ? null : () => widget.onPlay(_controller.text),
+                onPressed: canPlay ? () => widget.onPlay(_controller.text) : null,
                 icon: const Icon(Icons.play_arrow),
                 label: Text(_buttonLabel(state.status)),
               ),

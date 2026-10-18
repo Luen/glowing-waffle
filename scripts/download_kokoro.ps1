@@ -1,6 +1,8 @@
 # Download Kokoro TTS model (sherpa-onnx) and place model.onnx, tokens.txt, voices.bin,
 # lexicon-us-en.txt and espeak-ng-data.zip into assets/tts/
-# Required for native (Android/iOS) TTS. See: https://k2-fsa.github.io/sherpa/onnx/tts/pretrained_models/kokoro.html
+# Needed by scripts/smoke_tts.py and by offline development builds; the app itself
+# downloads the model on first run (issue #7).
+# See: https://k2-fsa.github.io/sherpa/onnx/tts/pretrained_models/kokoro.html
 
 $ErrorActionPreference = "Stop"
 $url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2"

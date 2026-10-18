@@ -20,6 +20,41 @@ class GlowingWaffleApp extends ConsumerStatefulWidget {
 class _GlowingWaffleAppState extends ConsumerState<GlowingWaffleApp> {
   late final TtsEngine _engine = widget.engine ?? getTtsEngine();
 
+  @override
+  void initState() {
+    super.initState();
+    _checkModel();
+  }
+
+  /// Native builds download the model on first run (issue #7), so find out
+  /// whether it is installed before the user presses Play.
+  Future<void> _checkModel() async {
+    bool ready;
+    try {
+      ready = await _engine.isModelReady();
+    } catch (e) {
+      // Best effort: if the check fails, leave the UI usable and let Play
+      // report the real error.
+      debugPrint('Could not check whether the voice model is installed: $e');
+      return;
+    }
+    if (!mounted) return;
+    ref.read(ttsStateProvider.notifier).setModelReady(ready);
+  }
+
+  Future<void> _handleDownloadModel() async {
+    final notifier = ref.read(ttsStateProvider.notifier);
+    notifier.clearError();
+    notifier.setStatus(AppStatus.loadingModel);
+    try {
+      await _engine.downloadModel();
+      notifier.setModelReady(true);
+      notifier.setStatus(AppStatus.idle);
+    } catch (e) {
+      notifier.setStatus(AppStatus.error, errorMessage: e.toString());
+    }
+  }
+
   Future<void> _handlePlay(String text) async {
     if (text.trim().isEmpty) return;
     final notifier = ref.read(ttsStateProvider.notifier);
@@ -54,6 +89,7 @@ class _GlowingWaffleAppState extends ConsumerState<GlowingWaffleApp> {
       home: HomeScreen(
         onPlay: _handlePlay,
         onStop: _handleStop,
+        onDownloadModel: _handleDownloadModel,
       ),
     );
   }

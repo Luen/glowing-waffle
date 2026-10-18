@@ -60,6 +60,15 @@ class TtsEngineWeb implements TtsEngine {
     if (list == null) return const [];
     return [for (final voice in list.toDart) voice.toDart];
   }
+
+  /// Always ready: kokoro-js fetches its own model in the browser, so nothing
+  /// is installed on this device (unlike the native engine, see issue #7).
+  @override
+  Future<bool> isModelReady() async => true;
+
+  /// No-op on web; the browser fetches the model when it first synthesizes.
+  @override
+  Future<void> downloadModel() async {}
 }
 
 TtsEngine getTtsEngineImpl() => TtsEngineWeb();

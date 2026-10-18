@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,21 +7,44 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:glowing_waffle/app.dart';
 import 'package:glowing_waffle/providers/tts_providers.dart';
 import 'package:glowing_waffle/state/tts_app_state.dart';
+import 'package:glowing_waffle/tts/model_progress.dart';
 import 'package:glowing_waffle/tts/tts_engine.dart';
 import 'package:glowing_waffle/widgets/playback_controls.dart';
 
 class FakeEngine extends TtsEngine {
-  FakeEngine({this.error});
+  FakeEngine({this.error, this.downloadError, this.modelReady = true});
   final Object? error;
+  final Object? downloadError;
   final spoken = <String>[];
   String? lastVoice;
   double? lastSpeed;
   TtsBackend? lastBackend;
 
+  /// Whether [isModelReady] reports the model as installed.
+  bool modelReady;
+
+  /// Number of times [downloadModel] was called.
+  int downloadCalls = 0;
+
+  /// When set, [downloadModel] waits for it, so a download can be observed
+  /// in flight.
+  Completer<void>? downloadPending;
+
   @override
   Future<void> synthesizeAndPlay(String text) async {
     spoken.add(text);
     if (error != null) throw error!;
+  }
+
+  @override
+  Future<bool> isModelReady() async => modelReady;
+
+  @override
+  Future<void> downloadModel() async {
+    downloadCalls++;
+    if (downloadPending != null) await downloadPending!.future;
+    if (downloadError != null) throw downloadError!;
+    modelReady = true;
   }
 
   @override
@@ -52,6 +77,10 @@ Future<void> tapPlay(WidgetTester tester) async {
   await tester.tap(find.text('Play'));
   await tester.pumpAndSettle();
 }
+
+/// The tab's Play button, so tests can check whether it is enabled.
+FilledButton playButton(WidgetTester tester) =>
+    tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Play'));
 
 void main() {
   testWidgets('reads entered text with the engine', (tester) async {
@@ -158,5 +187,82 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(container.read(ttsStateProvider).backend, TtsBackend.cpu);
+  });
+
+  testWidgets('shows no model setup card once the model is installed',
+      (tester) async {
+    await pumpApp(tester, FakeEngine());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Voice model needed'), findsNothing);
+    expect(find.text('Download model'), findsNothing);
+  });
+
+  testWidgets('offers the model download when it is missing', (tester) async {
+    final engine = FakeEngine(modelReady: false);
+    await pumpApp(tester, engine);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Voice model needed'), findsOneWidget);
+    expect(find.textContaining('~350 MB'), findsOneWidget);
+    // Nothing can be played until the model is there.
+    expect(playButton(tester).onPressed, isNull);
+
+    await tester.tap(find.text('Download model'));
+    await tester.pumpAndSettle();
+
+    expect(engine.downloadCalls, 1);
+    expect(find.text('Voice model needed'), findsNothing);
+    expect(playButton(tester).onPressed, isNotNull);
+  });
+
+  testWidgets('shows download and unpacking progress', (tester) async {
+    final engine = FakeEngine(modelReady: false)
+      ..downloadPending = Completer<void>();
+    addTearDown(() => modelDownloadProgress.value = null);
+    await pumpApp(tester, engine);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Download model'));
+    await tester.pump();
+
+    expect(find.text('Downloading…'), findsOneWidget);
+    expect(find.text('Starting…'), findsOneWidget);
+
+    modelDownloadProgress.value = 0.42;
+    await tester.pump();
+    expect(find.text('Downloading 42%'), findsOneWidget);
+    expect(
+      tester.widget<LinearProgressIndicator>(
+        find.byType(LinearProgressIndicator),
+      ).value,
+      closeTo(0.42, 0.001),
+    );
+
+    // The last fifth of the bar is unpacking the archive.
+    modelDownloadProgress.value = 0.9;
+    await tester.pump();
+    expect(find.text('Unpacking…'), findsOneWidget);
+
+    engine.downloadPending!.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('Voice model needed'), findsNothing);
+  });
+
+  testWidgets('reports a failed model download and keeps the card',
+      (tester) async {
+    final engine = FakeEngine(
+      modelReady: false,
+      downloadError: StateError('no network'),
+    );
+    await pumpApp(tester, engine);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Download model'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('no network'), findsOneWidget);
+    expect(find.text('Voice model needed'), findsOneWidget);
+    expect(playButton(tester).onPressed, isNull);
   });
 }

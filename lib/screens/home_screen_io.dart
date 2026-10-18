@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../widgets/model_setup_card.dart';
 import 'text_tab.dart';
 import 'web_reader_tab.dart';
 
@@ -10,10 +11,14 @@ class HomeScreen extends ConsumerStatefulWidget {
     super.key,
     required this.onPlay,
     required this.onStop,
+    required this.onDownloadModel,
   });
 
   final void Function(String text) onPlay;
   final VoidCallback onStop;
+
+  /// Starts the first-run voice model download (see [ModelSetupCard]).
+  final VoidCallback onDownloadModel;
 
   @override
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
@@ -48,16 +53,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: Column(
         children: [
-          TextTab(
-            onPlay: widget.onPlay,
-            onStop: widget.onStop,
-          ),
-          WebReaderTab(
-            onExtractAndPlay: widget.onPlay,
-            onStop: widget.onStop,
+          ModelSetupCard(onDownload: widget.onDownloadModel),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                TextTab(
+                  onPlay: widget.onPlay,
+                  onStop: widget.onStop,
+                ),
+                WebReaderTab(
+                  onExtractAndPlay: widget.onPlay,
+                  onStop: widget.onStop,
+                ),
+              ],
+            ),
           ),
         ],
       ),
