@@ -6,6 +6,9 @@ enum AppStatus {
   loadingModel,
   generatingAudio,
   playing,
+
+  /// Rendering audio to save as a file (no playback).
+  exportingAudio,
   error,
 }
 

@@ -13,6 +13,7 @@ import 'model_store.dart';
 import 'text_chunker.dart';
 import 'tts_engine.dart';
 import 'tts_models.dart';
+import 'wav.dart';
 
 /// Native implementation: Kokoro 82M or KittenTTS nano via Sherpa-ONNX.
 ///
@@ -182,38 +183,21 @@ class TtsEngineMobile implements TtsEngine {
     // missing on a fresh install, and the write then throws PathNotFoundException.
     if (!await dir.exists()) await dir.create(recursive: true);
     final path = '${dir.path}/tts_${DateTime.now().millisecondsSinceEpoch}.wav';
-    final file = File(path);
-    final sink = file.openWrite();
-    const numChannels = 1;
-    const bitsPerSample = 16;
-    final byteRate = sampleRate * numChannels * bitsPerSample ~/ 8;
-    final dataSize = samples.length * 2;
-    final fileSize = 36 + dataSize;
-    sink.add('RIFF'.codeUnits);
-    sink.add(_uint32ToBytes(fileSize));
-    sink.add('WAVE'.codeUnits);
-    sink.add('fmt '.codeUnits);
-    sink.add(_uint32ToBytes(16));
-    sink.add(_uint16ToBytes(1));
-    sink.add(_uint16ToBytes(numChannels));
-    sink.add(_uint32ToBytes(sampleRate));
-    sink.add(_uint32ToBytes(byteRate));
-    sink.add(_uint16ToBytes(numChannels * bitsPerSample ~/ 8));
-    sink.add(_uint16ToBytes(bitsPerSample));
-    sink.add('data'.codeUnits);
-    sink.add(_uint32ToBytes(dataSize));
-    for (var i = 0; i < samples.length; i++) {
-      var s = (samples[i] * 32767).round().clamp(-32768, 32767);
-      sink.add(_uint16ToBytes(s & 0xFFFF));
-    }
-    await sink.flush();
-    await sink.close();
+    await File(path).writeAsBytes(
+      encodeWavPcm16(samples, sampleRate: sampleRate),
+    );
     return path;
   }
 
-  List<int> _uint32ToBytes(int v) =>
-      [v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >> 24) & 0xff];
-  List<int> _uint16ToBytes(int v) => [v & 0xff, (v >> 8) & 0xff];
+  /// Renders [text] with sherpa-onnx without playing it. The whole text goes
+  /// through one `generate` call, so a saved document is a single file.
+  @override
+  Future<RenderedAudio> renderSamples(String text) async {
+    if (text.trim().isEmpty) return RenderedAudio(Float32List(0));
+    final tts = await _getTts();
+    final audio = tts.generate(text: text, sid: _sid, speed: _speed);
+    return RenderedAudio(audio.samples, sampleRate: audio.sampleRate);
+  }
 
   /// Invalidates an in-flight [synthesizeAndPlay] loop when it changes.
   ///

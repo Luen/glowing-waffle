@@ -12,6 +12,7 @@ class HomeScreen extends ConsumerStatefulWidget {
     required this.onPlay,
     required this.onStop,
     required this.onDownloadModel,
+    required this.onSave,
   });
 
   final void Function(String text) onPlay;
@@ -19,6 +20,9 @@ class HomeScreen extends ConsumerStatefulWidget {
 
   /// Starts the first-run voice model download (see [ModelSetupCard]).
   final VoidCallback onDownloadModel;
+
+  /// Called with the text to export when Save is pressed.
+  final void Function(String text) onSave;
 
   @override
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
@@ -63,12 +67,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 TextTab(
                   onPlay: widget.onPlay,
                   onStop: widget.onStop,
+                  onSave: widget.onSave,
                   // Native builds choose between Kokoro and Kitten (see #6).
                   showModelPicker: true,
                 ),
                 WebReaderTab(
                   onExtractAndPlay: widget.onPlay,
                   onStop: widget.onStop,
+                  onSave: widget.onSave,
                 ),
               ],
             ),

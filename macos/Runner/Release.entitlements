@@ -7,5 +7,7 @@
 	<!-- Outgoing HTTP: the voice model is downloaded on first run (issue #7). -->
 	<key>com.apple.security.network.client</key>
 	<true/>
+	<key>com.apple.security.files.downloads.read-write</key>
+	<true/>
 </dict>
 </plist>

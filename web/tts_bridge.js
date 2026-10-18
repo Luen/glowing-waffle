@@ -3,7 +3,8 @@
  * with a WASM fallback. (Earlier versions called the WASM path "Kitten", but it
  * always loaded Kokoro; KittenTTS is not used on web yet.)
  * Exposes window.glowingWaffleTts = {
- *   synthesize(text), stop(), init(), checkHardware(), getEngineName(),
+ *   synthesize(text), renderSamples(text), downloadWav(bytes, fileName),
+ *   stop(), init(), checkHardware(), getEngineName(),
  *   getVoices(), getVoice(), setVoice(voice), getSpeed(), setSpeed(speed),
  *   setBackend(backend)
  * }.
@@ -17,6 +18,8 @@
   const STORAGE_KEY = 'glowing_waffle_tts_engine_v2';
   const SETTINGS_KEY = 'glowing_waffle_tts_settings_v1';
   const SAMPLE_RATE = 24000;
+  /** Silence inserted between chunks when rendering a file (playback has none). */
+  const RENDER_CHUNK_GAP_MS = 120;
 
   // Kokoro v1.0 English voices, in sherpa-onnx speaker-id order (the native
   // engine uses the same order, so a voice chosen here can be reused there).
@@ -311,6 +314,56 @@
   }
 
   /**
+   * Render text to one Float32Array without playing it, so Dart can encode and
+   * save it as a WAV. Uses the same sentence chunking as playback and joins the
+   * chunks with a short pause, so a saved document is one file (not one clip per
+   * sentence). Independent of playback: it neither stops nor reports to it.
+   */
+  async function renderSamples(text) {
+    if (!text || String(text).trim() === '') return new Float32Array(0);
+    if (!currentEngine) await init();
+
+    const gap = new Float32Array(Math.round((SAMPLE_RATE * RENDER_CHUNK_GAP_MS) / 1000));
+    const parts = [];
+    let total = 0;
+    for (const chunk of splitSentences(text)) {
+      const samples = await synthesizeChunk(chunk);
+      if (!samples || samples.length === 0) continue;
+      if (total > 0) {
+        parts.push(gap);
+        total += gap.length;
+      }
+      parts.push(samples);
+      total += samples.length;
+    }
+
+    const joined = new Float32Array(total);
+    let offset = 0;
+    for (const part of parts) {
+      joined.set(part, offset);
+      offset += part.length;
+    }
+    return joined;
+  }
+
+  /// Offer [bytes] (a WAV built by Dart) to the user as a download named
+  /// [fileName].
+  function downloadWav(bytes, fileName) {
+    const name = typeof fileName === 'string' && fileName ? fileName : 'audio.wav';
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = name;
+    link.rel = 'noopener';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    // Keep the URL alive while the browser starts the download.
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  /**
    * Choose the execution backend: 'auto' (best available), 'gpu' (WebGPU) or
    * 'cpu' (WASM). Anything else means 'auto'.
    *
@@ -353,6 +406,8 @@
 
   window.glowingWaffleTts = {
     synthesize,
+    renderSamples,
+    downloadWav,
     stop,
     getEngineName,
     init,

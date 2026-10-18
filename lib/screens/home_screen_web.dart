@@ -11,6 +11,7 @@ class HomeScreen extends ConsumerStatefulWidget {
     required this.onPlay,
     required this.onStop,
     required this.onDownloadModel,
+    required this.onSave,
   });
 
   final void Function(String text) onPlay;
@@ -20,6 +21,9 @@ class HomeScreen extends ConsumerStatefulWidget {
   /// [ModelSetupCard] never appears here. Kept for a constructor shared with
   /// the native home screen.
   final VoidCallback onDownloadModel;
+
+  /// Called with the text to export when Save is pressed.
+  final void Function(String text) onSave;
 
   @override
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
@@ -39,6 +43,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: TextTab(
               onPlay: widget.onPlay,
               onStop: widget.onStop,
+              onSave: widget.onSave,
               // The web engine can run on WebGPU or WASM, so let the user override.
               showBackend: true,
             ),

@@ -1,4 +1,5 @@
 import 'dart:js_interop';
+import 'dart:typed_data';
 
 import '../state/tts_app_state.dart';
 import 'tts_engine.dart';
@@ -7,6 +8,8 @@ import 'tts_models.dart';
 /// JS bridge exposed by `web/tts_bridge.js` as `window.glowingWaffleTts`.
 extension type _TtsBridge._(JSObject _) implements JSObject {
   external JSPromise<JSAny?> synthesize(JSString text);
+  external JSPromise<JSFloat32Array> renderSamples(JSString text);
+  external JSString downloadWav(JSUint8Array bytes, JSString fileName);
   external void stop();
   external JSString getEngineName();
   external JSArray<JSString> getVoices();
@@ -33,6 +36,21 @@ class TtsEngineWeb implements TtsEngine {
       );
     }
     await bridge.synthesize(text.toJS).toDart;
+  }
+
+  /// Renders [text] through the bridge without playing it, so it can be saved
+  /// as a WAV. The bridge joins every sentence chunk into one buffer.
+  @override
+  Future<RenderedAudio> renderSamples(String text) async {
+    if (text.trim().isEmpty) return RenderedAudio(Float32List(0));
+    final bridge = _bridge;
+    if (bridge == null) {
+      throw StateError(
+        'TTS bridge (glowingWaffleTts) not loaded. Ensure tts_bridge.js is loaded.',
+      );
+    }
+    final samples = await bridge.renderSamples(text.toJS).toDart;
+    return RenderedAudio(samples.toDart);
   }
 
   @override

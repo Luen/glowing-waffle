@@ -9,6 +9,29 @@ Client-side TTS app: read aloud text and websites using **Kokoro 82M** or the sm
 - **Web**: Kokoro 82M via kokoro-js, on WebGPU when available and WASM otherwise. Open the app in a browser and use the text field. The text field's **Acceleration** dropdown overrides the execution backend (`Auto`, `GPU (WebGPU)`, `CPU (WASM)`) — pick CPU if WebGPU output sounds garbled on your machine.
 - **Android / iOS / macOS**: Kokoro 82M or KittenTTS nano via Sherpa-ONNX. The selected model is **downloaded on first run** instead of being bundled (~350 MB for Kokoro, ~25 MB for Kitten), so the app itself stays small; the **Model** dropdown switches between them and the setup card names the one that is missing. Includes a **Web Reader** tab to load a URL and read extracted text aloud.
 
+On every platform **Save WAV** writes the current text (or the Web Reader page) to a
+single 24 kHz WAV file: a download on web, the downloads folder on desktop and
+Android, and the app's Documents folder on iOS (visible in the Files app). See
+[Saving audio](#saving-audio).
+
+## Saving audio
+
+**Save WAV** next to Play renders the current text with the selected voice and
+speed again — it does not record playback — and writes one file:
+
+- **Web**: the bytes become a Blob and the browser downloads them
+  (`downloadWav()` in `web/tts_bridge.js`).
+- **Android / macOS / Windows / Linux**: the `Downloads` folder.
+- **iOS**: the app's Documents folder, shown by the Files app as
+  *On My iPhone → Glowing Waffle* (`UIFileSharingEnabled` in
+  `ios/Runner/Info.plist`). The macOS sandbox needs
+  `com.apple.security.files.downloads.read-write` in `macos/Runner/*.entitlements`.
+
+Multi-sentence input and whole Web Reader pages become a single WAV: the web
+bridge renders its sentence chunks and joins them with a short pause, and the
+native engine renders the whole text in one call. Nothing is written until Save
+is pressed, and the confirmation names the file and where it went.
+
 ## Setup
 
 1. **Flutter**  
@@ -121,6 +144,7 @@ CI (`.github/workflows/ci.yml`) runs all of the above and uploads the WAVs as an
 - **Bridge**: `TtsEngine` is implemented by `tts_engine_web.dart` (web) and `tts_engine_mobile.dart` (native), selected via conditional imports.
 - **Web**: `tts_bridge.js` loads Kokoro, caches in session, and plays via the Web Audio API. Dart calls it with `dart:js_interop`.
 - **Native**: Sherpa-ONNX loads the selected model — Kokoro 82M (with espeak-ng data and an en-US lexicon) or KittenTTS nano — from the app support directory, where it was downloaded and checksum-verified on first run, generates PCM, writes WAV to a temp file, and plays with `just_audio`.
+- **Saving**: `TtsEngine.renderSamples()` returns the PCM for a save (native: one sherpa-onnx `generate` call; web: `renderSamples()` in the bridge), `lib/tts/wav.dart` encodes it as 16-bit mono WAV, and `lib/tts/audio_saver.dart` writes it — a Blob download on web, a file in a user-visible folder on native.
 
 ## Third-party licences
 
