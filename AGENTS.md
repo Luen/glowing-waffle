@@ -108,6 +108,11 @@ Rules that are not obvious from reading the code:
 5. The bridge persists two things in `localStorage` (settings, and the last
    *auto* engine decision). An explicit backend choice deliberately does not
    touch the auto decision, so overriding never contaminates Auto.
+6. `splitSentences()` in `web/tts_bridge.js` and `splitIntoChunks()` in
+   `lib/tts/text_chunker.dart` **must stay in sync**: both engines speak the
+   same text in the same sentence-sized chunks (300 chars), so the two
+   implementations are deliberately identical, down to the terminator-only
+   fallback. Change them together and update `test/text_chunker_test.dart`.
 
 ## Models, voices and assets
 

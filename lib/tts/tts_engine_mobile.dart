@@ -10,6 +10,7 @@ import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa_onnx;
 import '../state/tts_app_state.dart';
 import 'model_progress.dart';
 import 'model_store.dart';
+import 'text_chunker.dart';
 import 'tts_engine.dart';
 import 'tts_models.dart';
 
@@ -214,16 +215,33 @@ class TtsEngineMobile implements TtsEngine {
       [v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >> 24) & 0xff];
   List<int> _uint16ToBytes(int v) => [v & 0xff, (v >> 8) & 0xff];
 
+  /// Invalidates an in-flight [synthesizeAndPlay] loop when it changes.
+  ///
+  /// Bumped by [stop] and by the next run, so a stopped or superseded run
+  /// cannot keep speaking the following chunks.
+  int _runId = 0;
+
   @override
   Future<void> synthesizeAndPlay(String text) async {
     if (text.trim().isEmpty) return;
+    // Speak sentence by sentence, like the web bridge: the first audio starts
+    // after the first sentence instead of after the whole text, and the PCM
+    // held in memory at once stays bounded (issue #30).
+    final chunks = splitIntoChunks(text);
+    if (chunks.isEmpty) return;
+    final runId = ++_runId;
     final tts = await _getTts();
-    final audio = tts.generate(text: text, sid: _sid, speed: _speed);
-    await _playGenerated(audio);
+    for (final chunk in chunks) {
+      if (runId != _runId) return;
+      final audio = tts.generate(text: chunk, sid: _sid, speed: _speed);
+      if (runId != _runId) return;
+      await _playGenerated(audio);
+    }
   }
 
   @override
   Future<void> stop() async {
+    _runId++;
     await _player.stop();
   }
 
