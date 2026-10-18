@@ -121,3 +121,11 @@ CI (`.github/workflows/ci.yml`) runs all of the above and uploads the WAVs as an
 - **Bridge**: `TtsEngine` is implemented by `tts_engine_web.dart` (web) and `tts_engine_mobile.dart` (native), selected via conditional imports.
 - **Web**: `tts_bridge.js` loads Kokoro, caches in session, and plays via the Web Audio API. Dart calls it with `dart:js_interop`.
 - **Native**: Sherpa-ONNX loads the selected model — Kokoro 82M (with espeak-ng data and an en-US lexicon) or KittenTTS nano — from the app support directory, where it was downloaded and checksum-verified on first run, generates PCM, writes WAV to a temp file, and plays with `just_audio`.
+
+## Third-party licences
+
+See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). The models and libraries
+are permissively licensed (Apache-2.0/MIT) with one exception: sherpa-onnx
+compiles **espeak-ng (GPL-3.0-or-later)** into the native library every native
+build ships, so native builds contain GPL-3.0 code (open question and tracking
+in #32). Glowing Waffle's own licence is not decided yet.
