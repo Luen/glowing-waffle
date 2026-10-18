@@ -2,6 +2,7 @@ import 'dart:js_interop';
 
 import '../state/tts_app_state.dart';
 import 'tts_engine.dart';
+import 'tts_models.dart';
 
 /// JS bridge exposed by `web/tts_bridge.js` as `window.glowingWaffleTts`.
 extension type _TtsBridge._(JSObject _) implements JSObject {
@@ -39,6 +40,11 @@ class TtsEngineWeb implements TtsEngine {
     _bridge?.stop();
   }
 
+  /// No-op: the web engine always speaks with Kokoro through kokoro-js, so the
+  /// picker that offers Kitten is only shown by the native home screen (#6).
+  @override
+  Future<void> setModel(TtsModel model) async {}
+
   @override
   Future<void> setVoice(String voice) async {
     _bridge?.setVoice(voice.toJS);
@@ -62,7 +68,8 @@ class TtsEngineWeb implements TtsEngine {
   }
 
   /// Always ready: kokoro-js fetches its own model in the browser, so nothing
-  /// is installed on this device (unlike the native engine, see issue #7).
+  /// is installed on this device (unlike the native engine, see issues #6,
+  /// #7).
   @override
   Future<bool> isModelReady() async => true;
 

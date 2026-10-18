@@ -9,10 +9,13 @@ import 'package:glowing_waffle/providers/tts_providers.dart';
 import 'package:glowing_waffle/state/tts_app_state.dart';
 import 'package:glowing_waffle/tts/model_progress.dart';
 import 'package:glowing_waffle/tts/tts_engine.dart';
+import 'package:glowing_waffle/tts/tts_models.dart';
 import 'package:glowing_waffle/widgets/playback_controls.dart';
 
 class FakeEngine extends TtsEngine {
-  FakeEngine({this.error, this.downloadError, this.modelReady = true});
+  FakeEngine({this.error, this.downloadError, bool modelReady = true})
+      : readyModels = modelReady ? TtsModel.values.toSet() : {};
+
   final Object? error;
   final Object? downloadError;
   final spoken = <String>[];
@@ -20,8 +23,11 @@ class FakeEngine extends TtsEngine {
   double? lastSpeed;
   TtsBackend? lastBackend;
 
-  /// Whether [isModelReady] reports the model as installed.
-  bool modelReady;
+  /// The model the app selected through [setModel].
+  TtsModel selectedModel = TtsModel.kokoro;
+
+  /// Models [isModelReady] reports as installed.
+  final Set<TtsModel> readyModels;
 
   /// Number of times [downloadModel] was called.
   int downloadCalls = 0;
@@ -37,14 +43,19 @@ class FakeEngine extends TtsEngine {
   }
 
   @override
-  Future<bool> isModelReady() async => modelReady;
+  Future<void> setModel(TtsModel model) async {
+    selectedModel = model;
+  }
+
+  @override
+  Future<bool> isModelReady() async => readyModels.contains(selectedModel);
 
   @override
   Future<void> downloadModel() async {
     downloadCalls++;
     if (downloadPending != null) await downloadPending!.future;
     if (downloadError != null) throw downloadError!;
-    modelReady = true;
+    readyModels.add(selectedModel);
   }
 
   @override
@@ -70,7 +81,8 @@ Future<void> pumpApp(WidgetTester tester, TtsEngine engine) async {
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  await tester.pumpWidget(ProviderScope(child: GlowingWaffleApp(engine: engine)));
+  await tester
+      .pumpWidget(ProviderScope(child: GlowingWaffleApp(engine: engine)));
 }
 
 Future<void> tapPlay(WidgetTester tester) async {
@@ -81,6 +93,22 @@ Future<void> tapPlay(WidgetTester tester) async {
 /// The tab's Play button, so tests can check whether it is enabled.
 FilledButton playButton(WidgetTester tester) =>
     tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Play'));
+
+/// Labels the model dropdown shows, sizes included.
+const kokoroLabel = 'Kokoro 82M (~350 MB)';
+const kittenLabel = 'Kitten nano 15M (~25 MB)';
+
+/// Selects [to] in the model dropdown, which currently shows [from].
+Future<void> pickModel(
+  WidgetTester tester, {
+  required String from,
+  required String to,
+}) async {
+  await tester.tap(find.text(from).first);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(to).last);
+  await tester.pumpAndSettle();
+}
 
 void main() {
   testWidgets('reads entered text with the engine', (tester) async {
@@ -204,7 +232,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Voice model needed'), findsOneWidget);
-    expect(find.textContaining('~350 MB'), findsOneWidget);
+    expect(
+      find.textContaining('The Kokoro 82M voice model (~350 MB, one time)'),
+      findsOneWidget,
+    );
     // Nothing can be played until the model is there.
     expect(playButton(tester).onPressed, isNull);
 
@@ -233,9 +264,11 @@ void main() {
     await tester.pump();
     expect(find.text('Downloading 42%'), findsOneWidget);
     expect(
-      tester.widget<LinearProgressIndicator>(
-        find.byType(LinearProgressIndicator),
-      ).value,
+      tester
+          .widget<LinearProgressIndicator>(
+            find.byType(LinearProgressIndicator),
+          )
+          .value,
       closeTo(0.42, 0.001),
     );
 
@@ -265,4 +298,92 @@ void main() {
     expect(find.text('Voice model needed'), findsOneWidget);
     expect(playButton(tester).onPressed, isNull);
   });
+
+  test('remembers the voice per model and never leaves an invalid one', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final notifier = container.read(ttsStateProvider.notifier);
+
+    expect(container.read(ttsStateProvider).voice, kDefaultVoice);
+
+    notifier.setVoice('am_adam');
+    expect(container.read(ttsStateProvider).voice, 'am_adam');
+
+    // Kitten has no am_adam, so it falls back to its own default.
+    notifier.setModel(TtsModel.kitten);
+    expect(container.read(ttsStateProvider).voice, kKittenVoices.first);
+
+    notifier.setVoice('Rosie');
+    notifier.setModel(TtsModel.kokoro);
+    // Kokoro remembers what was picked for it ...
+    expect(container.read(ttsStateProvider).voice, 'am_adam');
+    // ... and a voice of another model is ignored rather than sent on.
+    notifier.setVoice('Rosie');
+    expect(container.read(ttsStateProvider).voice, 'am_adam');
+  });
+
+  testWidgets('offers both models with their sizes off web', (tester) async {
+    await pumpApp(tester, FakeEngine());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Model'), findsOneWidget);
+    expect(find.text(kokoroLabel), findsOneWidget);
+    await pickModel(tester, from: kokoroLabel, to: kittenLabel);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(GlowingWaffleApp)),
+      listen: false,
+    );
+    expect(container.read(ttsStateProvider).model, TtsModel.kitten);
+    // The voice list follows the model, and the old pick is not offered.
+    expect(find.text('af_heart'), findsNothing);
+    expect(find.text(kKittenVoices.first), findsOneWidget);
+  }, skip: kIsWeb);
+
+  testWidgets('hides the model picker on web', (tester) async {
+    await pumpApp(tester, FakeEngine());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Model'), findsNothing);
+  }, skip: !kIsWeb);
+
+  testWidgets('sends the selected model and its voice to the engine',
+      (tester) async {
+    final engine = FakeEngine();
+    await pumpApp(tester, engine);
+    await tester.pumpAndSettle();
+    await pickModel(tester, from: kokoroLabel, to: kittenLabel);
+
+    await tester.enterText(find.byType(TextField).first, 'Hello');
+    await tapPlay(tester);
+
+    expect(engine.selectedModel, TtsModel.kitten);
+    expect(engine.lastVoice, kKittenVoices.first);
+  }, skip: kIsWeb);
+
+  testWidgets('asks for the model that is missing, not the one installed',
+      (tester) async {
+    final engine = FakeEngine()..readyModels.remove(TtsModel.kitten);
+    await pumpApp(tester, engine);
+    await tester.pumpAndSettle();
+    // Kokoro is installed, so nothing is in the way yet.
+    expect(find.text('Voice model needed'), findsNothing);
+    expect(playButton(tester).onPressed, isNotNull);
+
+    await pickModel(tester, from: kokoroLabel, to: kittenLabel);
+
+    // Switching to the missing model brings the card back, naming it.
+    expect(
+      find.textContaining('The Kitten nano 15M voice model (~25 MB'),
+      findsOneWidget,
+    );
+    expect(playButton(tester).onPressed, isNull);
+
+    await tester.tap(find.text('Download model'));
+    await tester.pumpAndSettle();
+
+    expect(engine.downloadCalls, 1);
+    expect(find.text('Voice model needed'), findsNothing);
+    expect(playButton(tester).onPressed, isNotNull);
+  }, skip: kIsWeb);
 }

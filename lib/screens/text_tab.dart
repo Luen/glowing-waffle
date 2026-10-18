@@ -12,6 +12,7 @@ class TextTab extends ConsumerStatefulWidget {
     required this.onPlay,
     required this.onStop,
     this.showBackend = false,
+    this.showModelPicker = false,
   });
 
   /// Called with the current text when Play is pressed.
@@ -20,6 +21,9 @@ class TextTab extends ConsumerStatefulWidget {
 
   /// Shows the execution-backend picker (web only, see [PlaybackControls]).
   final bool showBackend;
+
+  /// Shows the speech-model picker (native only, see [PlaybackControls]).
+  final bool showModelPicker;
 
   @override
   ConsumerState<TextTab> createState() => _TextTabState();
@@ -37,7 +41,8 @@ class _TextTabState extends ConsumerState<TextTab> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(ttsStateProvider);
-    final isBusy = state.status != AppStatus.idle && state.status != AppStatus.error;
+    final isBusy =
+        state.status != AppStatus.idle && state.status != AppStatus.error;
     // Without the model there is nothing to play yet; the setup card above
     // explains why and offers the download.
     final canPlay = !isBusy && state.modelReady;
@@ -64,18 +69,23 @@ class _TextTabState extends ConsumerState<TextTab> {
             ),
           ],
           const SizedBox(height: 16),
-          PlaybackControls(showBackend: widget.showBackend),
+          PlaybackControls(
+            showBackend: widget.showBackend,
+            showModelPicker: widget.showModelPicker,
+          ),
           const SizedBox(height: 16),
           Row(
             children: [
               FilledButton.icon(
-                onPressed: canPlay ? () => widget.onPlay(_controller.text) : null,
+                onPressed:
+                    canPlay ? () => widget.onPlay(_controller.text) : null,
                 icon: const Icon(Icons.play_arrow),
                 label: Text(_buttonLabel(state.status)),
               ),
               const SizedBox(width: 12),
               OutlinedButton.icon(
-                onPressed: state.status == AppStatus.playing ? widget.onStop : null,
+                onPressed:
+                    state.status == AppStatus.playing ? widget.onStop : null,
                 icon: const Icon(Icons.stop),
                 label: const Text('Stop'),
               ),
@@ -98,5 +108,4 @@ class _TextTabState extends ConsumerState<TextTab> {
         return 'Play';
     }
   }
-
 }

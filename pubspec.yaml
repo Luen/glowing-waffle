@@ -26,8 +26,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  # Deliberately no assets: the Kokoro model (~360 MB) is downloaded on first
-  # run into the app support directory instead of being bundled, which is what
-  # kept web builds and native bundles huge (issue #7). Declaring
-  # `assets: [assets/tts/]` again opts a dev build back into bundling, which
+  # Deliberately no assets: the speech models (Kokoro ~360 MB, Kitten ~25 MB)
+  # are downloaded on first run into the app support directory instead of being
+  # bundled, which is what kept web builds and native bundles huge (issues #6,
+  # #7). Declaring `assets: [assets/tts/]` or `[assets/tts_kitten/]` again opts
+  # a dev build back into bundling that model, which
   # lib/tts/tts_engine_mobile.dart detects and imports without downloading.

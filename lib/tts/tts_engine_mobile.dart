@@ -11,60 +11,70 @@ import '../state/tts_app_state.dart';
 import 'model_progress.dart';
 import 'model_store.dart';
 import 'tts_engine.dart';
+import 'tts_models.dart';
 
-/// Native implementation: Kokoro 82M via Sherpa-ONNX.
+/// Native implementation: Kokoro 82M or KittenTTS nano via Sherpa-ONNX.
 ///
 /// Kokoro v1.0 (multi-lang) needs model.onnx, tokens.txt, voices.bin, an
-/// English lexicon and the espeak-ng phonemizer data, ~350 MB in total. Those
-/// files are deliberately not bundled, because they made native bundles (and
-/// web builds) huge; the model is downloaded on first run into the app support
-/// directory, which the OS does not purge between runs (issue #7).
+/// English lexicon and the espeak-ng phonemizer data (~350 MB); KittenTTS nano
+/// needs model.fp16.onnx, tokens.txt, voices.bin and the same espeak-ng data
+/// (~25 MB) and is the small fallback. Those files are deliberately not
+/// bundled, because they made native bundles (and web builds) huge; the
+/// selected model is downloaded on first run into the app support directory,
+/// which the OS does not purge between runs (issues #6, #7).
 ///
-/// A build that declares `assets: [assets/tts/]` in pubspec.yaml is imported
-/// instead of downloaded, so offline development keeps working.
+/// A build that declares `assets: [assets/tts/]` (Kokoro) or
+/// `assets: [assets/tts_kitten/]` (Kitten) in pubspec.yaml is imported instead
+/// of downloaded, so offline development keeps working.
 class TtsEngineMobile implements TtsEngine {
   sherpa_onnx.OfflineTts? _tts;
-  String? _modelDirPath;
-  final AudioPlayer _player = AudioPlayer();
 
-  /// Speaker id derived from the selected voice (list index in [kKokoroVoices]).
+  /// Which model [_tts] was built from, so switching models rebuilds it.
+  TtsModel? _ttsModel;
+
+  /// Model the next synthesis uses (see [setModel]).
+  TtsModel _model = TtsModel.kokoro;
+
+  final AudioPlayer _player = AudioPlayer();
+  String? _supportPath;
+  final Set<TtsModel> _importedAssets = {};
+
+  /// Speaker id derived from the selected voice (index in [TtsModel.voices]).
   int _sid = 3; // af_heart
 
   /// Playback speed multiplier for subsequent synthesis.
   double _speed = 1.0;
 
-  static const String _assetPrefix = 'assets/tts/';
   static const String _espeakZip = 'espeak-ng-data.zip';
 
-  /// Model directory, in the app support directory, created on first use.
+  /// Directory for [model], in the app support directory, created on first use.
   ///
   /// The temp directory the model used to be copied into is purged by the OS,
-  /// which meant copying ~350 MB again on a later cold start.
-  Future<Directory> _modelDir() async {
-    final cached = _modelDirPath;
-    if (cached != null) return Directory(cached);
-    final support = await getApplicationSupportDirectory();
-    final dir = Directory('${support.path}/tts_model');
+  /// which meant copying hundreds of MB again on a later cold start.
+  Future<Directory> _modelDir(TtsModel model) async {
+    final support =
+        _supportPath ??= (await getApplicationSupportDirectory()).path;
+    final dir = Directory('$support/tts_models/${model.wireName}');
     await dir.create(recursive: true);
-    await _importBundledAssets(dir);
-    return Directory(_modelDirPath = dir.path);
+    if (_importedAssets.add(model)) {
+      await _importBundledAssets(model, dir);
+    }
+    return dir;
   }
 
-  /// Copies a model bundled in `assets/tts/` into [modelDir].
+  /// Copies a model bundled in [TtsModel.assetDir] into [modelDir].
   ///
   /// Nothing is declared there by default, and `rootBundle` then throws; that
   /// is the normal download case, not an error.
-  Future<void> _importBundledAssets(Directory modelDir) async {
-    if (await File('${modelDir.path}/${kKokoroModelFiles.first}').exists()) {
-      return;
-    }
+  Future<void> _importBundledAssets(TtsModel model, Directory modelDir) async {
+    if (await File('${modelDir.path}/${model.files.first}').exists()) return;
     try {
-      for (final name in kKokoroModelFiles) {
-        final bytes = await rootBundle.load('$_assetPrefix$name');
+      for (final name in model.files) {
+        final bytes = await rootBundle.load('${model.assetDir}$name');
         await File('${modelDir.path}/$name')
             .writeAsBytes(bytes.buffer.asUint8List(), flush: true);
       }
-      final zipped = await rootBundle.load('$_assetPrefix$_espeakZip');
+      final zipped = await rootBundle.load('${model.assetDir}$_espeakZip');
       final archive = ZipDecoder().decodeBytes(zipped.buffer.asUint8List());
       await extractArchiveToDisk(archive, modelDir.path);
     } catch (e) {
@@ -72,55 +82,83 @@ class TtsEngineMobile implements TtsEngine {
       // the normal path here and means the model gets downloaded instead. Any
       // other failure (say, a full disk while copying) is not fatal either:
       // downloadModel() reports its own error.
-      debugPrint('No bundled Kokoro model: $e');
+      debugPrint('No bundled ${model.label} model: $e');
     }
   }
 
-  KokoroModelStore _store(Directory dir) => KokoroModelStore(
+  ModelStore _store(TtsModel model, Directory dir) => ModelStore(
+        model: model,
         modelDir: dir,
         onProgress: (progress) => modelDownloadProgress.value = progress,
       );
 
   @override
-  Future<bool> isModelReady() async => _store(await _modelDir()).isReady();
+  Future<bool> isModelReady() async =>
+      _store(_model, await _modelDir(_model)).isReady();
 
   @override
   Future<void> downloadModel() async {
-    final dir = await _modelDir();
+    final dir = await _modelDir(_model);
     try {
-      await _store(dir).ensure();
+      await _store(_model, dir).ensure();
     } finally {
       modelDownloadProgress.value = null;
     }
   }
 
+  /// Switches model: the engine is rebuilt on the next synthesis, because the
+  /// two models need different sherpa-onnx configs. The loaded one is freed
+  /// first (Kokoro alone holds ~325 MB of weights).
+  @override
+  Future<void> setModel(TtsModel model) async {
+    if (model == _model) return;
+    _model = model;
+    _sid = model.voices.indexOf(model.defaultVoice);
+    _tts?.free();
+    _tts = null;
+    _ttsModel = null;
+  }
+
   Future<sherpa_onnx.OfflineTts> _getTts() async {
-    if (_tts != null) return _tts!;
-    final modelDir = await _modelDir();
-    if (!await _store(modelDir).isReady()) {
+    if (_tts != null && _ttsModel == _model) return _tts!;
+    final model = _model;
+    final modelDir = await _modelDir(model);
+    if (!await _store(model, modelDir).isReady()) {
       throw StateError(
-        'The voice model is not installed yet. Download it first.',
+        'The ${model.label} voice model is not installed yet. '
+        'Download it first.',
       );
     }
     sherpa_onnx.initBindings();
-    final modelPath = '${modelDir.path}/model.onnx';
-    final tokensPath = '${modelDir.path}/tokens.txt';
-    final kokoroConfig = sherpa_onnx.OfflineTtsKokoroModelConfig(
-      model: modelPath,
-      tokens: tokensPath,
-      voices: '${modelDir.path}/voices.bin',
-      dataDir: '${modelDir.path}/$kEspeakDataDir',
-      lexicon: '${modelDir.path}/lexicon-us-en.txt',
-      lang: 'en-us',
-    );
+    final path = modelDir.path;
     final modelConfig = sherpa_onnx.OfflineTtsModelConfig(
-      kokoro: kokoroConfig,
+      kokoro: model == TtsModel.kokoro
+          ? sherpa_onnx.OfflineTtsKokoroModelConfig(
+              model: '$path/${model.onnxFile}',
+              tokens: '$path/tokens.txt',
+              voices: '$path/voices.bin',
+              dataDir: '$path/$kEspeakDataDir',
+              lexicon: '$path/lexicon-us-en.txt',
+              lang: 'en-us',
+            )
+          : const sherpa_onnx.OfflineTtsKokoroModelConfig(),
+      kitten: model == TtsModel.kitten
+          ? sherpa_onnx.OfflineTtsKittenModelConfig(
+              model: '$path/${model.onnxFile}',
+              tokens: '$path/tokens.txt',
+              voices: '$path/voices.bin',
+              dataDir: '$path/$kEspeakDataDir',
+            )
+          : const sherpa_onnx.OfflineTtsKittenModelConfig(),
       numThreads: 2,
       debug: false,
       provider: 'cpu',
     );
-    final config = sherpa_onnx.OfflineTtsConfig(model: modelConfig);
-    _tts = sherpa_onnx.OfflineTts(config);
+    _tts?.free();
+    _tts = sherpa_onnx.OfflineTts(sherpa_onnx.OfflineTtsConfig(
+      model: modelConfig,
+    ));
+    _ttsModel = model;
     return _tts!;
   }
 
@@ -138,6 +176,10 @@ class TtsEngineMobile implements TtsEngine {
 
   Future<String> _writeWav(Float32List samples, int sampleRate) async {
     final dir = await getTemporaryDirectory();
+    // path_provider does not guarantee the directory exists: on macOS it hands
+    // back ~/Library/Containers/<bundle>/Data/Library/Caches/<bundle>, which is
+    // missing on a fresh install, and the write then throws PathNotFoundException.
+    if (!await dir.exists()) await dir.create(recursive: true);
     final path = '${dir.path}/tts_${DateTime.now().millisecondsSinceEpoch}.wav';
     final file = File(path);
     final sink = file.openWrite();
@@ -168,7 +210,8 @@ class TtsEngineMobile implements TtsEngine {
     return path;
   }
 
-  List<int> _uint32ToBytes(int v) => [v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >> 24) & 0xff];
+  List<int> _uint32ToBytes(int v) =>
+      [v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >> 24) & 0xff];
   List<int> _uint16ToBytes(int v) => [v & 0xff, (v >> 8) & 0xff];
 
   @override
@@ -186,7 +229,7 @@ class TtsEngineMobile implements TtsEngine {
 
   @override
   Future<void> setVoice(String voice) async {
-    final index = kKokoroVoices.indexOf(voice);
+    final index = _model.voices.indexOf(voice);
     if (index >= 0) _sid = index;
   }
 
@@ -201,7 +244,7 @@ class TtsEngineMobile implements TtsEngine {
   Future<void> setBackend(TtsBackend backend) async {}
 
   @override
-  Future<List<String>> voices() async => kKokoroVoices;
+  Future<List<String>> voices() async => _model.voices;
 }
 
 TtsEngine getTtsEngineImpl() => TtsEngineMobile();

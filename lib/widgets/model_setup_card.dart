@@ -5,10 +5,10 @@ import '../providers/tts_providers.dart';
 import '../state/tts_app_state.dart';
 import '../tts/model_progress.dart';
 
-/// First-run setup card shown while the voice model is not installed.
+/// First-run setup card shown while the selected voice model is not installed.
 ///
-/// The Kokoro model is ~350 MB and is no longer bundled with the app, so native
-/// builds fetch it on first run instead of shipping it (issue #7). The card
+/// Models are no longer bundled with the app, so native builds fetch the
+/// selected one on first run instead of shipping it (issues #6, #7). The card
 /// stays hidden once the model is there; the download is explicit because of
 /// its size.
 class ModelSetupCard extends ConsumerWidget {
@@ -17,14 +17,12 @@ class ModelSetupCard extends ConsumerWidget {
   /// Starts the model download. The engine lives in the app, not here.
   final VoidCallback onDownload;
 
-  /// Rough size of the download, shown to explain the wait.
-  static const String downloadSize = '~350 MB';
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(ttsStateProvider);
     if (state.modelReady) return const SizedBox.shrink();
     final downloading = state.status == AppStatus.loadingModel;
+    final model = state.model;
 
     return Card(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -46,9 +44,10 @@ class ModelSetupCard extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 8),
-            const Text(
-              'The voice model ($downloadSize, one time) is downloaded and '
-              'kept on this device. That keeps the app itself small.',
+            Text(
+              'The ${model.label} voice model (${model.size}, one time) is '
+              'downloaded and kept on this device. That keeps the app itself '
+              'small.',
             ),
             const SizedBox(height: 12),
             ValueListenableBuilder<double?>(
