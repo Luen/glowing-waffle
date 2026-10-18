@@ -63,6 +63,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                 TextTab(
                   onPlay: widget.onPlay,
                   onStop: widget.onStop,
+                  // Native builds choose between Kokoro and Kitten (see #6).
+                  showModelPicker: true,
                 ),
                 WebReaderTab(
                   onExtractAndPlay: widget.onPlay,

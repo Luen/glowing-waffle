@@ -6,6 +6,7 @@ import 'providers/tts_providers.dart';
 import 'state/tts_app_state.dart';
 import 'tts/tts_engine.dart';
 import 'tts/tts_engine_impl.dart';
+import 'tts/tts_models.dart';
 
 class GlowingWaffleApp extends ConsumerStatefulWidget {
   const GlowingWaffleApp({super.key, this.engine});
@@ -63,6 +64,7 @@ class _GlowingWaffleAppState extends ConsumerState<GlowingWaffleApp> {
     // synthesizeAndPlay resolves once playback has finished.
     notifier.setStatus(AppStatus.playing);
     try {
+      await _engine.setModel(settings.model);
       await _engine.setVoice(settings.voice);
       await _engine.setSpeed(settings.speed);
       await _engine.setBackend(settings.backend);
@@ -78,8 +80,25 @@ class _GlowingWaffleAppState extends ConsumerState<GlowingWaffleApp> {
     ref.read(ttsStateProvider.notifier).setStatus(AppStatus.idle);
   }
 
+  /// Keeps the engine on the model the UI selected.
+  ///
+  /// Readiness, the download and the voice list all refer to the selected
+  /// model, so the engine has to follow the picker, not just Play (#6).
+  Future<void> _applyModel(TtsModel model) async {
+    try {
+      await _engine.setModel(model);
+    } catch (e) {
+      debugPrint('Could not switch the speech model: $e');
+    }
+    await _checkModel();
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Each model has its own files, so a switch has to be re-checked: the
+    // setup card appears or disappears and Play follows (issue #6).
+    ref.listen(ttsStateProvider.select((state) => state.model),
+        (_, model) => _applyModel(model));
     return MaterialApp(
       title: 'Read aloud',
       theme: ThemeData(

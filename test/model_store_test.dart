@@ -1,9 +1,15 @@
+// The store is dart:io only (real HttpClient, real files) and the fixture
+// archive is served from a real HttpServer, so this file cannot run on the web.
+@TestOn('vm')
+library;
+
 import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:glowing_waffle/tts/model_store.dart';
+import 'package:glowing_waffle/tts/tts_models.dart';
 
 /// Serves the archive bytes over loopback so the store's real HTTP path runs.
 class _FixtureServer {
@@ -80,6 +86,24 @@ List<int> _buildArchive() {
   return BZip2Encoder().encode(TarEncoder().encode(archive));
 }
 
+/// Builds Kitten's archive shape: same layout, its own file names, no lexicon.
+List<int> _buildKittenArchive() {
+  final archive = Archive();
+  const prefix = 'kitten-nano-en-v0_2-fp16/';
+  void add(String name, List<int> bytes) =>
+      archive.addFile(ArchiveFile('$prefix$name', bytes.length, bytes));
+
+  add('model.fp16.onnx', List<int>.generate(512, (i) => (i * 7) % 251));
+  add('tokens.txt', 'x y z'.codeUnits);
+  add('voices.bin', List<int>.generate(32, (i) => i));
+  // Kokoro's lexicon is not part of Kitten; a mirror shipping it must not make
+  // the store believe the model is something else.
+  add('lexicon-us-en.txt', 'ignored'.codeUnits);
+  add('espeak-ng-data/en_dict', 'en'.codeUnits);
+  add('LICENSE', 'licence text'.codeUnits);
+  return BZip2Encoder().encode(TarEncoder().encode(archive));
+}
+
 void main() {
   late Directory tempDir;
   late Directory modelDir;
@@ -98,7 +122,9 @@ void main() {
 
   final progress = <double>[];
 
-  KokoroModelStore storeFor({String sha256 = ''}) => KokoroModelStore(
+  ModelStore storeFor({TtsModel model = TtsModel.kokoro, String sha256 = ''}) =>
+      ModelStore(
+        model: model,
         modelDir: modelDir,
         archiveUrl: server.uri,
         sha256: sha256,
@@ -119,8 +145,8 @@ void main() {
     expect(File('${modelDir.path}/tokens.txt').readAsStringSync(), 'a b c');
     expect(File('${modelDir.path}/voices.bin').readAsBytesSync(),
         List<int>.generate(64, (i) => 255 - i));
-    expect(File('${modelDir.path}/lexicon-us-en.txt').readAsStringSync(),
-        'hello');
+    expect(
+        File('${modelDir.path}/lexicon-us-en.txt').readAsStringSync(), 'hello');
     expect(File('${modelDir.path}/espeak-ng-data/en_dict').readAsStringSync(),
         'en');
 
@@ -188,7 +214,8 @@ void main() {
     // The announced checksum is of the full archive, so a short body is caught
     // either by the HTTP stack or by the checksum below it.
     final url = await _TruncatedServer.start(archive, 32);
-    final store = KokoroModelStore(
+    final store = ModelStore(
+      model: TtsModel.kokoro,
       modelDir: modelDir,
       archiveUrl: url,
       sha256: crypto.sha256.convert(archive).toString(),
@@ -208,5 +235,58 @@ void main() {
 
     expect(File('${modelDir.path}.tar.bz2').existsSync(), isTrue);
     expect(await storeFor().isReady(), isFalse);
+  });
+
+  test('installs Kitten: its own file names, no lexicon', () async {
+    final archive = _buildKittenArchive();
+    server.body = archive;
+    progress.clear();
+    final store = storeFor(
+      model: TtsModel.kitten,
+      sha256: crypto.sha256.convert(archive).toString(),
+    );
+
+    await store.ensure();
+
+    expect(await store.isReady(), isTrue);
+    expect(File('${modelDir.path}/model.fp16.onnx').readAsBytesSync(),
+        List<int>.generate(512, (i) => (i * 7) % 251));
+    expect(File('${modelDir.path}/tokens.txt').readAsStringSync(), 'x y z');
+    expect(File('${modelDir.path}/voices.bin').lengthSync(), 32);
+    expect(File('${modelDir.path}/espeak-ng-data/en_dict').readAsStringSync(),
+        'en');
+    // Neither the Kokoro lexicon nor the licence is written.
+    expect(File('${modelDir.path}/lexicon-us-en.txt').existsSync(), isFalse);
+    expect(File('${modelDir.path}/LICENSE').existsSync(), isFalse);
+    expect(progress.last, 1.0);
+  });
+
+  test("one model's files do not satisfy the other", () async {
+    // Both stores are pointed at the same directory: Kokoro's files are there,
+    // Kitten's are not, so only Kokoro reports ready.
+    server.body = _buildArchive();
+    await storeFor().ensure();
+
+    expect(await storeFor(model: TtsModel.kokoro).isReady(), isTrue);
+    expect(await storeFor(model: TtsModel.kitten).isReady(), isFalse);
+  });
+
+  test('each model pins the archive it downloads', () {
+    for (final model in TtsModel.values) {
+      expect(model.archiveUrl.scheme, 'https');
+      expect(model.archiveUrl.path, endsWith('.tar.bz2'));
+      expect(model.archiveSha256, hasLength(64));
+      expect(model.files, contains(model.onnxFile));
+      expect(model.voices, isNotEmpty);
+      expect(model.voices, contains(model.defaultVoice));
+    }
+
+    // The pinned release assets, and the names the smoke test stages with.
+    expect(TtsModel.kokoro.archiveUrl.path,
+        contains('kokoro-multi-lang-v1_0.tar.bz2'));
+    expect(TtsModel.kitten.archiveUrl.path,
+        contains('kitten-nano-en-v0_2-fp16.tar.bz2'));
+    expect(
+        TtsModel.values.map((model) => model.wireName), ['kokoro', 'kitten']);
   });
 }

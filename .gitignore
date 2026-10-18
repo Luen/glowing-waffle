@@ -65,10 +65,13 @@ Thumbs.db
 *.tmp
 .cache/
 
-# Kokoro TTS model files (large; use scripts/download_kokoro.ps1 or download manually)
+# Speech model files (large; stage them with scripts/download_kokoro.sh, or let
+# the app download them on first run). assets/tts/tokens.txt is tracked.
 assets/tts/model.onnx
 assets/tts/voices.bin
 android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
 assets/tts/lexicon-us-en.txt
 assets/tts/espeak-ng-data.zip
+# Kitten staging directory for scripts/download_kokoro.sh --kitten
+assets/tts_kitten/
 scripts/web_smoke/node_modules/

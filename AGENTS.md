@@ -28,13 +28,15 @@ flutter test --platform chrome
 node --check web/tts_bridge.js
 ```
 
-End-to-end smoke tests use the same model and config as the app. CI runs both:
+End-to-end smoke tests use the same models and configs as the app. CI runs all of them:
 
 ```bash
-scripts/download_kokoro.sh                     # stages ~360 MB into assets/tts/ for the smoke test
+scripts/download_kokoro.sh                     # stages Kokoro (~360 MB) into assets/tts/
+scripts/download_kokoro.sh --kitten            # stages Kitten nano (~25 MB) into assets/tts_kitten/
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r scripts/requirements.txt
 python scripts/smoke_tts.py --out native-smoke.wav
+python scripts/smoke_tts.py --engine kitten --out kitten-smoke.wav
 cd scripts/web_smoke && npm ci && node smoke.mjs ../../web-smoke.wav
 ```
 
@@ -42,7 +44,7 @@ Run it locally:
 
 ```bash
 flutter run -d chrome                          # web: no model download, Kokoro loads in-browser
-flutter run -d macos                           # native: downloads the model on first run (~350 MB)
+flutter run -d macos                           # native: downloads the selected model on first run (~350 MB Kokoro, ~25 MB Kitten)
 flutter build web --release --output=build/web-preview
 python3 -m http.server 8099 -d build/web-preview   # build/web needs an http origin; file:// will not work
 ```
@@ -56,7 +58,8 @@ python3 -m http.server 8099 -d build/web-preview   # build/web needs an http ori
 | a playback setting (voice/speed/backend/model) | `lib/state/tts_app_state.dart` → `lib/providers/tts_providers.dart` → `lib/widgets/playback_controls.dart` → applied in `lib/app.dart` `_handlePlay` |
 | which screen/tabs exist per platform | `lib/screens/home_screen.dart` (conditional import), `home_screen_web.dart`, `home_screen_io.dart` |
 | which engine is used | `lib/tts/tts_engine_impl.dart` (conditional import) |
-| native model files | `lib/tts/model_store.dart` (download + extract), `lib/tts/tts_engine_mobile.dart` (where they live), `scripts/download_kokoro.sh` (staging for the smoke test) |
+| which models exist, their files, archives, pins and voices | `lib/tts/tts_models.dart` (single source; mirrored by `scripts/smoke_tts.py`) |
+| native model files | `lib/tts/model_store.dart` (download + extract), `lib/tts/tts_engine_mobile.dart` (where they live, which sherpa config), `scripts/download_kokoro.sh [--kitten]` (staging for the smoke test) |
 | CI / release builds | `.github/workflows/ci.yml`, `.github/workflows/release.yml` |
 
 ## Platform split
@@ -112,34 +115,49 @@ Rules that are not obvious from reading the code:
   `scripts/web_smoke/package.json` for the smoke test) plus
   `onnx-community/Kokoro-82M-v1.0-ONNX`. Downloads happen in the browser and are
   cached by the browser.
-- **Native** — `sherpa-onnx` with the Kokoro v1.0 files (`model.onnx` 325 MB,
-  `voices.bin` 27 MB, `lexicon-us-en.txt`, `tokens.txt` and `espeak-ng-data/`).
-  They are **not bundled**: `lib/tts/model_store.dart` downloads
-  `kokoro-multi-lang-v1_0.tar.bz2` (~350 MB) on first run into the app **support**
-  directory (`<support>/tts_model`), verifies the pinned sha256, extracts only
-  the English files and deletes the archive. The OS does not purge the support
-  directory, unlike the temp directory this used to copy into on every cold
-  start. `--dart-define=KOKORO_MODEL_URL=… / KOKORO_MODEL_SHA256=…` points a
-  build at another (say, int8 or mirror) archive; an empty `KOKORO_MODEL_SHA256`
-  skips the check. Update the pin when the URL changes.
-- **Bundling is opt-in** — declaring `assets: [assets/tts/]` in `pubspec.yaml`
-  (with `scripts/download_kokoro.sh` staged) makes the app import that copy and
-  never download; leave the directory out of `pubspec.yaml` or a web build picks
-  up ~350 MB of model files. Only the smoke test needs `assets/tts/` staged now:
-  it loads the model with the same sherpa config and is what catches drift.
+- **Native** — `sherpa-onnx` with one of two models, chosen in the **Model**
+  dropdown (native only):
+  - **Kokoro 82M** (default): `model.onnx` 325 MB, `voices.bin` 27 MB,
+    `lexicon-us-en.txt`, `tokens.txt`, `espeak-ng-data/`, 20 English voices.
+  - **KittenTTS nano 15M**: `model.fp16.onnx` 24 MB, `voices.bin`, `tokens.txt`,
+    `espeak-ng-data/`, 8 voices, no lexicon (espeak-ng phonemizes).
+  Neither is bundled: `lib/tts/model_store.dart` downloads the selected model's
+  archive on first run into `<support>/tts_models/<name>`, verifies the pinned
+  sha256, extracts only the files `TtsModel.files` lists, and deletes the
+  archive. The OS does not purge the support directory, unlike the temp
+  directory this used to copy into on every cold start.
+  `lib/tts/tts_models.dart` is the single source for the archives, pins, file
+  lists and voices; `--dart-define=KOKORO_MODEL_URL=… / KOKORO_MODEL_SHA256=…`
+  (and `KITTEN_MODEL_URL` / `KITTEN_MODEL_SHA256`) point a build at another
+  archive (a mirror, a smaller quantized variant); an empty `…_SHA256` skips the
+  check. Update the pin when the URL changes.
+- **Model switching is native-only and has to reach the engine.** The web engine
+  keeps using Kokoro through kokoro-js and implements `setModel` as a no-op
+  rather than faking a second engine, so `PlaybackControls(showModelPicker:)` is
+  only passed true by the native screens. Readiness, `downloadModel()` and the
+  voice list all refer to `TtsAppState.model`, and `app.dart` `_applyModel`
+  pushes a change to the engine when the picker moves — without that, the
+  readiness check still asks about the *old* model.
+- **Bundling is opt-in** — declaring `assets: [assets/tts/]` (Kokoro, staged by
+  `scripts/download_kokoro.sh`) or `assets: [assets/tts_kitten/]` (Kitten,
+  `--kitten`) in `pubspec.yaml` makes the app import that copy and never
+  download; leave either out of `pubspec.yaml` or a web build picks up hundreds
+  of MB of model files. The same staged files are what the smoke tests load.
 - **Runtime download needs platform permissions**: Android's `INTERNET`
   (`android/app/src/main/AndroidManifest.xml` — the *main* manifest, not just the
   debug one) and macOS's `com.apple.security.network.client` in both
   `macos/Runner/*.entitlements`. The WebView's own traffic is not affected by the
   macOS entitlement; Dart's `HttpClient` is.
-- iOS backs up the support directory to iCloud, so the model is included in a
-  device backup today; excluding it needs `NSURLIsExcludedFromBackupKey`, see the
-  open issue.
-- **Voices** — one shared list, `kKokoroVoices` in `lib/state/tts_app_state.dart`
-  (20 English ids in sherpa speaker-id order, so list index == native `sid`;
-  kokoro-js uses the same ids on purpose). Anything that adds an engine has to
-  make this per-engine and keep the selected voice valid across a switch.
-- Keep `scripts/smoke_tts.py` (sherpa config), `tts_engine_mobile.dart` and the
+- iOS backs up the support directory to iCloud, so downloaded models are
+  included in a device backup today; excluding them needs
+  `NSURLIsExcludedFromBackupKey`, see the open issue.
+- **Voices are per model**: `TtsModel.voices` in `lib/tts/tts_models.dart`
+  (Kokoro's 20 ids are in sherpa speaker-id order — list index == native `sid` —
+  and kokoro-js uses the same ids on purpose; Kitten's 8 names are in
+  `voices.bin` order). `TtsAppState.voice` resolves to the remembered pick for
+  the selected model or that model's default, so switching can never leave an id
+  the engine cannot use.
+- Keep `scripts/smoke_tts.py` (`ENGINES`), `tts_engine_mobile.dart` and the
   bridge's kokoro-js call in sync. The smoke tests are the only thing that
   catches drift between them.
 
@@ -163,7 +181,12 @@ config identical) before comparing two configs — otherwise you are chasing
 noise.
 
 For native, `scripts/smoke_tts.py` writes a WAV and CI uploads it as the
-`smoke-audio` artifact.
+`smoke-audio` artifact. That covers the *config*; to cover the engine itself
+(download, `setModel`, `_writeWav`, `just_audio`), write a throwaway macOS
+integration test that drives `TtsEngineMobile`, copy the `tts_*.wav` out of
+`getTemporaryDirectory()` while playback runs (the engine deletes it when
+playback completes), and transcribe that. That is how the missing temp
+directory on macOS was caught (#26).
 
 The model download has two moving parts that fail silently if you only check
 that a future completed: the pinned sha256 and the tar layout (a top-level
@@ -171,13 +194,21 @@ directory to strip, entries the engine does not need). Check both against the
 real archive, not only a fixture:
 
 ```bash
-# 1. The store downloads, checksums and extracts the real 350 MB archive.
-#    (Serve the archive over loopback in a throwaway script and run
-#    KokoroModelStore against it; see the PR that added model_store.dart.)
+# 1. Serve the real archive out of process, so the peak memory you measure is
+#    the store's, and run a *compiled* harness: `dart run` compiles in-process
+#    and adds its own ~55 MB to every peak.
+python3 -m http.server 8129 -d <archive dir> &
+dart compile exe <throwaway harness using ModelStore> -o /tmp/model_check
+/usr/bin/time -l /tmp/model_check http://127.0.0.1:8129/<archive>.tar.bz2 /tmp/out kokoro
+# Kokoro (published archive): 359 files / 377,710,739 bytes in 29 s, 382 MiB peak.
+# Kitten nano: 358 files / 41,805,804 bytes in 2.5 s, 54 MiB peak.
+
 # 2. Feed what it extracted to sherpa, the same config the app uses:
 cp <extracted>/{model.onnx,tokens.txt,voices.bin,lexicon-us-en.txt} assets/tts/
 python3 -c "import shutil; shutil.make_archive('assets/tts/espeak-ng-data','zip','<extracted>','espeak-ng-data')"
 python scripts/smoke_tts.py --out /tmp/store-smoke.wav
+# Kitten instead: assets/tts_kitten/ (model.fp16.onnx, no lexicon) and
+python scripts/smoke_tts.py --engine kitten --out /tmp/kitten-store-smoke.wav
 ```
 
 A bad extraction shows up as a shorter/empty file (the archive decoder hands the
@@ -186,11 +217,13 @@ not just that files exist.
 
 ## Testing
 
-- Tests live in `test/widget_test.dart` (app/UI behaviour) and
-  `test/model_store_test.dart` (the model download, against a fixture archive
-  served from a local HTTP server). Widget tests inject a fake engine through
-  `GlowingWaffleApp(engine: …)`, which is the intended seam for exercising
-  "settings reach the engine"; new `TtsEngine` members must be added to that fake.
+- Tests live in `test/widget_test.dart` (app/UI behaviour, including the model
+  and voice pickers) and `test/model_store_test.dart` (the model download, for
+  both models, against a fixture archive served from a local HTTP server; it is
+  `@TestOn('vm')` because it binds a real `HttpServer`).
+  Widget tests inject a fake engine through `GlowingWaffleApp(engine: …)`, which
+  is the intended seam for exercising "settings reach the engine"; new
+  `TtsEngine` members must be added to that fake.
 - Test behaviour, not implementation: UI → state, and state → engine call.
 - Write platform-specific assertions with `skip: kIsWeb` / `skip: !kIsWeb` so
   one file passes both on the VM and in Chrome; the Chrome run is what proves
@@ -264,11 +297,13 @@ Then reference it from the PR ("Not in this PR: #NN") so the two stay connected.
 
 ## Open work (Oct 2026)
 
-- #6 KittenTTS for real: model picker, per-engine voices; web stays Kokoro-only
-  until there is a real web runtime.
 - #8 Verify Android, iOS and macOS builds on real toolchains (macOS CI job, iOS
   minimum version for `sherpa_onnx_ios`).
 - #11 Store signing for release builds (secrets required).
 - #14 Allow saving the generated audio to a file.
-- TTS settings are **not persisted** — voice, speed and backend reset on every
-  reload. Worth a `shared_preferences` pass (the persistence item in #6).
+- #23 TTS settings are **not persisted** — voice, speed, model and backend reset
+  on every restart. Worth a `shared_preferences` pass.
+- #24 `scripts/download_kokoro.sh` stages Kitten too now; rename it.
+- #25 Evaluate the newer `kitten-nano-en-v0_8` (and micro/mini) checkpoints.
+- #27 `_playGenerated` waits on just_audio's state stream with no timeout, so a
+  missing completion leaves the UI on "Playing".

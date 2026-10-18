@@ -104,7 +104,8 @@ class _WebReaderTabState extends ConsumerState<WebReaderTab> {
           window.__CHANNEL__.postMessage(text);
         }
       })();
-    '''.replaceAll('__CHANNEL__', _textChannelName);
+    '''
+        .replaceAll('__CHANNEL__', _textChannelName);
 
     await _webController.runJavaScript(script);
   }
@@ -112,7 +113,8 @@ class _WebReaderTabState extends ConsumerState<WebReaderTab> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(ttsStateProvider);
-    final isBusy = state.status != AppStatus.idle && state.status != AppStatus.error;
+    final isBusy =
+        state.status != AppStatus.idle && state.status != AppStatus.error;
     final canExtract = !isBusy && state.modelReady;
 
     return Column(
@@ -156,7 +158,9 @@ class _WebReaderTabState extends ConsumerState<WebReaderTab> {
                 label: const Text('Extract & Read'),
               ),
               const SizedBox(height: 12),
-              const PlaybackControls(),
+              // The Web Reader only exists on native builds, which can pick a
+              // model (web is Kokoro-only).
+              const PlaybackControls(showModelPicker: true),
             ],
           ),
         ),

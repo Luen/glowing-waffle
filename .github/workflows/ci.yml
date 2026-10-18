@@ -24,21 +24,24 @@ jobs:
       - run: flutter build web
 
   tts-smoke:
-    # End-to-end CPU synthesis with the same model/config as the native app
-    # and the same kokoro-js model + audio handling as the web bridge.
+    # End-to-end CPU synthesis with the same models/config as the native app
+    # (Kokoro and the smaller Kitten) and the same kokoro-js model + audio
+    # handling as the web bridge.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/cache@v6
         with:
           path: ~/.cache/glowing-waffle
-          key: kokoro-multi-lang-v1_0
+          key: tts-models-kokoro-multi-lang-v1_0-kitten-nano-en-v0_2-fp16
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
       - run: pip install -r scripts/requirements.txt
       - run: scripts/download_kokoro.sh
+      - run: scripts/download_kokoro.sh --kitten
       - run: python scripts/smoke_tts.py --out native-smoke.wav
+      - run: python scripts/smoke_tts.py --engine kitten --out kitten-smoke.wav
       - uses: actions/setup-node@v7
         with:
           node-version: 24
