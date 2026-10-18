@@ -311,10 +311,28 @@ Then reference it from the PR ("Not in this PR: #NN") so the two stay connected.
 - #8 Verify Android, iOS and macOS builds on real toolchains (macOS CI job, iOS
   minimum version for `sherpa_onnx_ios`).
 - #11 Store signing for release builds (secrets required).
-- #14 Allow saving the generated audio to a file.
+- #14 Allow saving the generated audio to a file — PR #19 predates the model and
+  engine refactors and now conflicts in 10 files; it needs a rebase.
+- #20 iOS includes the downloaded models in iCloud device backups; excluding them
+  needs `NSURLIsExcludedFromBackupKey`.
+- #21 Model extraction holds the largest file in memory (the Kokoro tar peaks at
+  ~325 MB).
 - #23 TTS settings are **not persisted** — voice, speed, model and backend reset
   on every restart. Worth a `shared_preferences` pass.
 - #24 `scripts/download_kokoro.sh` stages Kitten too now; rename it.
 - #25 Evaluate the newer `kitten-nano-en-v0_8` (and micro/mini) checkpoints.
 - #27 `_playGenerated` waits on just_audio's state stream with no timeout, so a
   missing completion leaves the UI on "Playing".
+- #29 IndexTTS is not a drop-in engine (needs a second runtime, GB weights and a
+  restrictive licence); ZipVoice, via the sherpa-onnx we already ship, is the
+  on-device voice-cloning candidate.
+- #31 Kokoro `multi-lang-v1_1` (103 speakers) needs a decision first: web and
+  native deliberately share voice ids, so the two lists would have to diverge or
+  move together.
+- #32 Third-party notices now live in `THIRD_PARTY_NOTICES.md`, but the app has
+  no `LICENSE` of its own and k2-fsa has not been asked about the linked
+  espeak-ng (GPL-3.0).
+- #33 Survey of VoiceStudio / Chatterbox / kokoro-web / IndexTTS; its actionable
+  items are #29–#32.
+- #36 The web smoke test's `sharp` carried three high advisories (fixed by PR
+  #37 via an override); `sprintf-js` still has no patched release.
