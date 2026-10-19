@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:archive/archive_io.dart';
@@ -166,14 +167,36 @@ class TtsEngineMobile implements TtsEngine {
 
   Future<void> _playGenerated(sherpa_onnx.GeneratedAudio audio) async {
     final wavPath = await _writeWav(audio.samples, audio.sampleRate);
-    await _player.setFilePath(wavPath);
-    await _player.play();
-    await _player.processingStateStream.firstWhere(
-      (s) => s == ProcessingState.completed || s == ProcessingState.idle,
-    );
     try {
-      File(wavPath).deleteSync();
-    } catch (_) {}
+      await _player.setFilePath(wavPath);
+      await _player.play();
+      // just_audio normally reports completion, but not always: a headless
+      // macOS run never did, which left the app stuck on "Playing" until Stop
+      // was pressed (#27). Give the clip its own length plus a margin, then
+      // treat it as finished.
+      final length = Duration(
+        microseconds:
+            audio.samples.length * Duration.microsecondsPerSecond ~/
+                audio.sampleRate,
+      );
+      try {
+        await _player.processingStateStream
+            .firstWhere(
+              (s) =>
+                  s == ProcessingState.completed || s == ProcessingState.idle,
+            )
+            .timeout(length + const Duration(seconds: 5));
+      } on TimeoutException {
+        // Stop first: otherwise the next chunk would talk over this one.
+        await _player.stop();
+      }
+    } finally {
+      // Also on an interrupted wait (stop pressed, error): the temp file must
+      // not outlive the run.
+      try {
+        File(wavPath).deleteSync();
+      } catch (_) {}
+    }
   }
 
   Future<String> _writeWav(Float32List samples, int sampleRate) async {
