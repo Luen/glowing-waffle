@@ -19,6 +19,9 @@ class WebReaderTab extends ConsumerStatefulWidget {
   });
 
   final void Function(String text) onExtractAndPlay;
+
+  /// Stops playback started from this tab, which otherwise would keep reading
+  /// until the user switched to the Text tab.
   final VoidCallback onStop;
 
   /// Called with the extracted text when Save is pressed.
@@ -186,16 +189,23 @@ class _WebReaderTabState extends ConsumerState<WebReaderTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
+              // Wrap, not Row: three labelled buttons overflow narrow phones.
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
                 children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: canExtract ? _readPage : null,
-                      icon: const Icon(Icons.article),
-                      label: const Text('Extract & Read'),
-                    ),
+                  FilledButton.icon(
+                    onPressed: canExtract ? _readPage : null,
+                    icon: const Icon(Icons.article),
+                    label: const Text('Extract & Read'),
                   ),
-                  const SizedBox(width: 12),
+                  OutlinedButton.icon(
+                    onPressed: state.status == AppStatus.playing
+                        ? widget.onStop
+                        : null,
+                    icon: const Icon(Icons.stop),
+                    label: const Text('Stop'),
+                  ),
                   OutlinedButton.icon(
                     onPressed: canExtract ? _savePage : null,
                     icon: const Icon(Icons.download),
