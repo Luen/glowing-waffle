@@ -43,14 +43,23 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter build apk --release --split-per-abi
-      - run: flutter build appbundle --release
+      # arm64-v8a only (issue #40): the models are CPU-bound and 32-bit/x86
+      # builds are not realistic targets. Flutter always passes its own
+      # target platforms to Gradle, so the flag (not abiFilters) is what picks
+      # the ABI; the check below keeps a future edit from shipping the 126 MB
+      # universal APK by accident.
+      - run: flutter build apk --release --target-platform android-arm64
+      - run: flutter build appbundle --release --target-platform android-arm64
+      - name: Check the APK is arm64-only
+        run: |
+          abis=$(unzip -l build/app/outputs/flutter-apk/app-release.apk \
+            | awk '{print $4}' | grep '^lib/' | cut -d/ -f2 | sort -u)
+          echo "ABIs: $abis"
+          test "$abis" = "arm64-v8a"
       - name: Collect
         run: |
           mkdir -p dist
-          for f in build/app/outputs/flutter-apk/app-*-release.apk; do
-            cp "$f" "dist/glowing-waffle-android-$(basename "$f" | sed 's/^app-//; s/-release//')"
-          done
+          cp build/app/outputs/flutter-apk/app-release.apk dist/glowing-waffle-android-arm64-v8a.apk
           cp build/app/outputs/bundle/release/app-release.aab dist/glowing-waffle-android.aab
           ls -lh dist
       - uses: actions/upload-artifact@v7
