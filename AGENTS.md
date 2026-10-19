@@ -332,8 +332,6 @@ Then reference it from the PR ("Not in this PR: #NN") so the two stay connected.
   needs `NSURLIsExcludedFromBackupKey`.
 - #21 Model extraction holds the largest file in memory (the Kokoro tar peaks at
   ~325 MB).
-- #23 TTS settings are **not persisted** — voice, speed, model and backend reset
-  on every restart. Worth a `shared_preferences` pass.
 - #24 `scripts/download_kokoro.sh` stages Kitten too now; rename it.
 - #25 Evaluate the newer `kitten-nano-en-v0_8` (and micro/mini) checkpoints.
 - #27 `_playGenerated` waits on just_audio's state stream with no timeout, so a
