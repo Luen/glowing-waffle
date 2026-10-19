@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:archive/archive_io.dart';
 import 'package:crypto/crypto.dart' as crypto;
@@ -15,6 +16,10 @@ import 'tts_models.dart';
 /// Both the archive and the extracted files are streamed to/from disk so peak
 /// memory stays below the largest single entry even though the Kokoro archive
 /// is ~340 MB (see #21 for the remaining peak).
+///
+/// Hashing and unpacking run on a background isolate: doing that work on the UI
+/// isolate froze the app for seconds and made Android raise "Read aloud isn't
+/// responding" during the first install (issue #39).
 class ModelStore {
   ModelStore({
     required this.model,
@@ -70,17 +75,8 @@ class ModelStore {
     if (!await archiveFile.exists()) {
       await _download(archiveFile);
     }
-    if (sha256.isNotEmpty) {
-      final actual = await _fileSha256(archiveFile);
-      if (actual != sha256) {
-        await archiveFile.delete();
-        throw StateError(
-          '${model.label} checksum mismatch: expected $sha256, got $actual.',
-        );
-      }
-    }
 
-    await _extract(archiveFile, modelDir);
+    await _install(archiveFile);
     // Free the archive (up to ~340 MB); re-extraction is not worth keeping it.
     await archiveFile.delete();
     onProgress?.call(1.0);
@@ -123,71 +119,133 @@ class ModelStore {
     }
   }
 
-  Future<void> _extract(File archiveFile, Directory target) async {
-    final tarFile = File('${archiveFile.path}.tar');
+  /// Verifies and unpacks [archiveFile] on a background isolate.
+  ///
+  /// The unpacking callback cannot cross an isolate boundary, so progress comes
+  /// back over a port instead.
+  Future<void> _install(File archiveFile) async {
+    final progress = ReceivePort();
+    final subscription = progress.listen((message) {
+      if (message is double) onProgress?.call(message);
+    });
+    // Only sendable values may be captured: reading the fields inside the
+    // closure would send `this`, so they are copied out here.
+    final archivePath = archiveFile.path;
+    final targetPath = modelDir.path;
+    final wanted = List<String>.of(model.files);
+    final expected = sha256;
+    final label = model.label;
+    final port = progress.sendPort;
     try {
-      // bzip2 -> tar, streamed to disk so the ~325 MB tar never sits in RAM.
-      final decoded = BZip2Decoder().decodeStream(
-        InputFileStream(archiveFile.path),
-        OutputFileStream(tarFile.path),
-      );
-      if (!decoded) {
-        throw ArchiveException(
-          'Could not decompress the ${model.label} archive.',
-        );
-      }
-
-      final totalBytes = await tarFile.length();
-      var written = 0;
-      var stripPrefix = '';
-
-      TarDecoder().decodeStream(
-        InputFileStream(tarFile.path),
-        // storeData must stay true: with false the callback gets entries with
-        // no content, so every extracted file would be empty. The decoder
-        // hands the entry content on as a stream and it is copied to disk here;
-        // only one entry is in memory at a time.
-        storeData: true,
-        keepEntries: false,
-        callback: (file) {
-          final name = file.name;
-          if (stripPrefix.isEmpty && name.contains('/')) {
-            stripPrefix = name.substring(0, name.indexOf('/') + 1);
-          }
-          final relative = name.startsWith(stripPrefix)
-              ? name.substring(stripPrefix.length)
-              : name;
-          written += file.size;
-
-          if (!file.isFile) return;
-          if (!_isWanted(relative)) return;
-
-          final outFile = File('${target.path}/$relative');
-          outFile.parent.createSync(recursive: true);
-          final out = OutputFileStream(outFile.path);
-          file.writeContent(out);
-          out.closeSync();
-
-          if (totalBytes > 0) {
-            onProgress
-                ?.call(0.8 + 0.2 * (written / totalBytes).clamp(0.0, 1.0));
-          }
-        },
+      await Isolate.run(
+        () => _installArchive(
+          archivePath: archivePath,
+          targetPath: targetPath,
+          wanted: wanted,
+          expectedSha256: expected,
+          label: label,
+          onProgress: port,
+        ),
+        debugName: 'tts-model-install',
       );
     } finally {
-      if (await tarFile.exists()) await tarFile.delete();
+      await subscription.cancel();
+      progress.close();
+    }
+  }
+}
+
+/// Verifies [archivePath] and unpacks the wanted files into [targetPath].
+///
+/// Top-level so it can be sent to the isolate; [onProgress] receives download
+/// style values between 0.8 and 1.0 for the unpacking part of the bar.
+void _installArchive({
+  required String archivePath,
+  required String targetPath,
+  required List<String> wanted,
+  required String expectedSha256,
+  required String label,
+  required SendPort onProgress,
+}) async {
+  if (expectedSha256.isNotEmpty) {
+    final actual = await _sha256Of(archivePath);
+    if (actual != expectedSha256) {
+      // Nothing can be extracted from it, and a retry should download again.
+      File(archivePath).deleteSync();
+      throw StateError(
+        '$label checksum mismatch: expected $expectedSha256, got $actual.',
+      );
     }
   }
 
-  /// Only the files the engine reads; skips Chinese/GB lexicons, FSTs, dicts
-  /// and the licence/readme the archives ship.
-  bool _isWanted(String relative) {
-    if (model.files.contains(relative)) return true;
-    return relative.startsWith('$kEspeakDataDir/');
-  }
+  final tarFile = File('$archivePath.tar');
+  try {
+    // bzip2 -> tar, streamed to disk so the ~325 MB tar never sits in RAM.
+    final decoded = BZip2Decoder().decodeStream(
+      InputFileStream(archivePath),
+      OutputFileStream(tarFile.path),
+    );
+    if (!decoded) {
+      throw ArchiveException('Could not decompress the $label archive.');
+    }
 
-  Future<String> _fileSha256(File file) async {
-    final digest = await crypto.sha256.bind(file.openRead()).first;
-    return digest.toString();
+    final totalBytes = tarFile.lengthSync();
+    var written = 0;
+    var stripPrefix = '';
+    var reported = -1.0;
+
+    TarDecoder().decodeStream(
+      InputFileStream(tarFile.path),
+      // storeData must stay true: with false the callback gets entries with
+      // no content, so every extracted file would be empty. The decoder
+      // hands the entry content on as a stream and it is copied to disk here;
+      // only one entry is in memory at a time.
+      storeData: true,
+      keepEntries: false,
+      callback: (file) {
+        final name = file.name;
+        if (stripPrefix.isEmpty && name.contains('/')) {
+          stripPrefix = name.substring(0, name.indexOf('/') + 1);
+        }
+        final relative = name.startsWith(stripPrefix)
+            ? name.substring(stripPrefix.length)
+            : name;
+        written += file.size;
+
+        if (!file.isFile) return;
+        if (!_isWanted(relative, wanted)) return;
+
+        final outFile = File('$targetPath/$relative');
+        outFile.parent.createSync(recursive: true);
+        final out = OutputFileStream(outFile.path);
+        file.writeContent(out);
+        out.closeSync();
+
+        if (totalBytes > 0) {
+          final value = 0.8 + 0.2 * (written / totalBytes).clamp(0.0, 1.0);
+          // Step the bar instead of sending one message per extracted file:
+          // the espeak-ng data alone is hundreds of them.
+          if (value - reported >= 0.01) {
+            reported = value;
+            onProgress.send(value);
+          }
+        }
+      },
+    );
+  } finally {
+    if (tarFile.existsSync()) tarFile.deleteSync();
   }
+}
+
+/// Only the files the engine reads; skips Chinese/GB lexicons, FSTs, dicts and
+/// the licence/readme the archives ship.
+bool _isWanted(String relative, List<String> wanted) {
+  if (wanted.contains(relative)) return true;
+  return relative.startsWith('$kEspeakDataDir/');
+}
+
+/// sha256 of [path], streamed so a ~350 MB archive never sits in RAM.
+Future<String> _sha256Of(String path) async {
+  final digest = await crypto.sha256.bind(File(path).openRead()).first;
+  return digest.toString();
 }
