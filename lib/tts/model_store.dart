@@ -87,40 +87,100 @@ class ModelStore {
     return modelDir;
   }
 
+  /// How many times a transfer is attempted before giving up.
+  static const int _maxAttempts = 4;
+
+  /// Downloads [target], resuming and retrying (#42).
+  ///
+  /// The body goes to `<target>.part` and is only renamed on success, so a
+  /// dropped connection costs the bytes of one attempt, not the whole ~350 MB
+  /// archive: the next attempt asks for the rest with a `Range` request.
   Future<void> _download(File target) async {
     final client = _httpClient ?? HttpClient();
     final partFile = File('${target.path}.part');
     try {
-      final request = await client.getUrl(archiveUrl);
-      final response = await request.close();
-      if (response.statusCode != HttpStatus.ok) {
-        throw HttpException(
-          'Download failed with HTTP ${response.statusCode}',
-          uri: archiveUrl,
-        );
-      }
-      final total = response.contentLength;
-      final sink = partFile.openWrite();
-      var received = 0;
-      try {
-        await for (final chunk in response) {
-          sink.add(chunk);
-          received += chunk.length;
-          // Reserve the last 20% of the bar for extraction.
-          if (total > 0) onProgress?.call(0.8 * received / total);
+      for (var attempt = 1;; attempt++) {
+        final offset = await partFile.exists() ? await partFile.length() : 0;
+        try {
+          await _downloadOnce(client, target, partFile, offset);
+          return;
+        } on _TransientDownloadError catch (error) {
+          if (attempt >= _maxAttempts) {
+            // Report the real failure, not the retry wrapper.
+            throw HttpException(error.message, uri: archiveUrl);
+          }
+          await Future<void>.delayed(Duration(milliseconds: 300 * attempt));
         }
-        await sink.flush();
-      } finally {
-        await sink.close();
       }
-      await partFile.rename(target.path);
-    } catch (_) {
-      // Do not leave a partial archive behind: the next attempt starts clean.
-      if (await partFile.exists()) await partFile.delete();
-      rethrow;
     } finally {
       if (_ownsHttpClient) client.close();
     }
+  }
+
+  /// One attempt: appends to [partFile] when the server honours a `Range`
+  /// request for [offset], otherwise starts the file over.
+  Future<void> _downloadOnce(
+    HttpClient client,
+    File target,
+    File partFile,
+    int offset,
+  ) async {
+    final HttpClientResponse response;
+    try {
+      final request = await client.getUrl(archiveUrl);
+      if (offset > 0) {
+        request.headers.set(HttpHeaders.rangeHeader, 'bytes=$offset-');
+      }
+      response = await request.close();
+    } on IOException catch (error) {
+      throw _TransientDownloadError('$error');
+    }
+
+    if (response.statusCode == HttpStatus.requestedRangeNotSatisfiable &&
+        offset > 0) {
+      // Everything already reached the disk (the previous attempt died between
+      // the last write and the rename); the checksum decides whether it is
+      // really complete.
+      await response.drain<void>();
+      await partFile.rename(target.path);
+      return;
+    }
+    if (response.statusCode != HttpStatus.ok &&
+        response.statusCode != HttpStatus.partialContent) {
+      final status = response.statusCode;
+      await response.drain<void>();
+      if (status >= 500 ||
+          status == HttpStatus.requestTimeout ||
+          status == HttpStatus.tooManyRequests) {
+        throw _TransientDownloadError('Download failed with HTTP $status');
+      }
+      throw HttpException('Download failed with HTTP $status', uri: archiveUrl);
+    }
+
+    // A server that ignores Range answers 200 with the whole body, so the part
+    // file must be truncated rather than appended to.
+    final resumed = response.statusCode == HttpStatus.partialContent;
+    final start = resumed ? offset : 0;
+    final remaining = response.contentLength;
+    final total = remaining < 0 ? -1 : start + remaining;
+    final sink = partFile.openWrite(
+      mode: resumed ? FileMode.append : FileMode.write,
+    );
+    var received = start;
+    try {
+      await for (final chunk in response) {
+        sink.add(chunk);
+        received += chunk.length;
+        // Reserve the last 20% of the bar for extraction.
+        if (total > 0) onProgress?.call(0.8 * received / total);
+      }
+      await sink.flush();
+    } on IOException catch (error) {
+      throw _TransientDownloadError('$error');
+    } finally {
+      await sink.close();
+    }
+    await partFile.rename(target.path);
   }
 
   Future<void> _extract(File archiveFile, Directory target) async {
@@ -190,4 +250,16 @@ class ModelStore {
     final digest = await crypto.sha256.bind(file.openRead()).first;
     return digest.toString();
   }
+}
+
+/// A transfer that failed in a way another attempt may fix: a dropped socket,
+/// a timeout or a server-side 5xx. [ModelStore._download] retries these and
+/// keeps the bytes already on disk.
+class _TransientDownloadError implements Exception {
+  const _TransientDownloadError(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
 }
