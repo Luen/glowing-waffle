@@ -62,8 +62,10 @@ class ModelStore {
 
   /// Ensures the model is available, downloading and extracting it if needed.
   ///
-  /// Returns the model directory. Reuses an already-downloaded archive so a
-  /// failed extraction does not require downloading again.
+  /// Returns the model directory. An interrupted download resumes on the next
+  /// call. The archive is dropped as soon as it has been unpacked into a tar,
+  /// which is what keeps the install's disk peak down (#53); a failed
+  /// extraction therefore starts from a fresh download.
   Future<Directory> ensure() async {
     if (await isReady()) {
       onProgress?.call(1.0);
@@ -72,13 +74,19 @@ class ModelStore {
     await modelDir.create(recursive: true);
 
     final archiveFile = File('${modelDir.path}.tar.bz2');
-    if (!await archiveFile.exists()) {
-      await _download(archiveFile);
-    }
+    try {
+      if (!await archiveFile.exists()) {
+        await _download(archiveFile);
+      }
 
-    await _install(archiveFile);
-    // Free the archive (up to ~340 MB); re-extraction is not worth keeping it.
-    await archiveFile.delete();
+      await _install(archiveFile);
+      // _install removes the archive once it has a complete tar; this only
+      // still runs when the install stopped before that point.
+      if (await archiveFile.exists()) await archiveFile.delete();
+    } on FileSystemException catch (error) {
+      if (_isOutOfSpace(error)) throw ModelSpaceException(model.label);
+      rethrow;
+    }
     onProgress?.call(1.0);
     return modelDir;
   }
@@ -172,6 +180,9 @@ class ModelStore {
       }
       await sink.flush();
     } on IOException catch (error) {
+      // A full disk is not worth retrying: report it without wrapping, so
+      // ensure() can turn it into a message that says what to do (#53).
+      if (error is FileSystemException && _isOutOfSpace(error)) rethrow;
       throw _TransientDownloadError('$error');
     } finally {
       await sink.close();
@@ -249,6 +260,16 @@ void _installArchive({
       throw ArchiveException('Could not decompress the $label archive.');
     }
 
+    // The checksum covered the archive and the tar is now complete, so nothing
+    // else can come out of the archive. Dropping it before the files are
+    // extracted keeps the install's disk peak near 750 MB instead of 1.1 GB,
+    // at the cost of a fresh download if the extraction itself fails (#53).
+    try {
+      File(archivePath).deleteSync();
+    } on FileSystemException {
+      // Not fatal: the extraction works either way, it just needs more room.
+    }
+
     final totalBytes = tarFile.lengthSync();
     var written = 0;
     var stripPrefix = '';
@@ -320,4 +341,31 @@ class _TransientDownloadError implements Exception {
 
   @override
   String toString() => message;
+}
+
+/// `ENOSPC` on Android, iOS/macOS and Linux; `ERROR_DISK_FULL` on Windows.
+const int _enospc = 28;
+const int _diskFullWindows = 112;
+
+/// Whether [error] means the device ran out of space.
+bool _isOutOfSpace(FileSystemException error) {
+  final code = error.osError?.errorCode;
+  return code == _enospc || code == _diskFullWindows;
+}
+
+/// Thrown when installing a model runs out of disk space (issue #53).
+///
+/// Unpacking keeps the tar and the extracted files side by side, so it needs
+/// roughly twice the model size in free space. Saying that is more useful than
+/// the platform's `FileSystemException` with `errno = 28`.
+class ModelSpaceException implements Exception {
+  const ModelSpaceException(this.label);
+
+  /// Which model was being installed, for the message.
+  final String label;
+
+  @override
+  String toString() =>
+      'Not enough free space to install $label. It needs about 800 MB free '
+      'while it unpacks; free up some space and try again.';
 }

@@ -302,6 +302,32 @@ void main() {
     expect(await storeFor().isReady(), isFalse);
   });
 
+  test(
+      'drops the archive once the tar exists, so a failed extraction re-downloads',
+      () async {
+    final archive = _buildArchive();
+    server.body = archive;
+    final checksum = crypto.sha256.convert(archive).toString();
+    // A file where the extraction needs a directory makes the write fail after
+    // the archive has already been dropped.
+    Directory(modelDir.path).createSync(recursive: true);
+    final blocker = File('${modelDir.path}/espeak-ng-data')
+      ..writeAsStringSync('in the way');
+
+    await expectLater(
+      storeFor(sha256: checksum).ensure(),
+      throwsA(isA<FileSystemException>()),
+    );
+    expect(File('${modelDir.path}.tar.bz2').existsSync(), isFalse);
+
+    // With the blocker gone the retry works, but it has to download again.
+    blocker.deleteSync();
+    final requests = server.requests;
+    await storeFor(sha256: checksum).ensure();
+    expect(server.requests, greaterThan(requests));
+    expect(await storeFor().isReady(), isTrue);
+  });
+
   test('installs Kitten: its own file names, no lexicon', () async {
     final archive = _buildKittenArchive();
     server.body = archive;
