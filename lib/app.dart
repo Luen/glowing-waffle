@@ -107,13 +107,13 @@ class _GlowingWaffleAppState extends ConsumerState<GlowingWaffleApp> {
         throw StateError('No audio was produced for this text.');
       }
       final fileName = suggestedAudioFileName(text, voice: settings.voice);
-      final where = await _audioSaver.save(
+      final message = await _audioSaver.save(
         encodeWavPcm16(audio.samples, sampleRate: audio.sampleRate),
         fileName,
       );
       notifier.setStatus(AppStatus.idle);
       _messengerKey.currentState?.showSnackBar(
-        SnackBar(content: Text('Saved $fileName to $where')),
+        SnackBar(content: Text(message)),
       );
     } catch (e) {
       notifier.setStatus(AppStatus.error, errorMessage: e.toString());

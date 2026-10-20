@@ -26,7 +26,7 @@ class WebAudioSaver implements AudioSaver {
     }
     bridge.downloadWav(bytes.toJS, fileName.toJS);
     // The browser owns where downloads land, so there is no path to report.
-    return "your browser's downloads";
+    return 'Saved $fileName to your downloads';
   }
 }
 

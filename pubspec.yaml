@@ -18,6 +18,7 @@ dependencies:
   archive: ^4.5.2
   # sha256 of the downloaded model archive (lib/tts/model_store.dart).
   crypto: ^3.0.6
+  share_plus: ^13.3.1
 
 dev_dependencies:
   flutter_test:
