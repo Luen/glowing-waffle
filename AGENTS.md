@@ -326,12 +326,6 @@ Then reference it from the PR ("Not in this PR: #NN") so the two stay connected.
 - #8 Verify Android, iOS and macOS builds on real toolchains (macOS CI job, iOS
   minimum version for `sherpa_onnx_ios`).
 - #11 Store signing for release builds (secrets required).
-- #14 Allow saving the generated audio to a file — PR #19 predates the model and
-  engine refactors and now conflicts in 10 files; it needs a rebase.
-- #20 iOS includes the downloaded models in iCloud device backups; excluding them
-  needs `NSURLIsExcludedFromBackupKey`.
-- #21 Model extraction holds the largest file in memory (the Kokoro tar peaks at
-  ~325 MB).
 - #23 TTS settings are **not persisted** — voice, speed, model and backend reset
   on every restart. Worth a `shared_preferences` pass.
 - #24 `scripts/download_kokoro.sh` stages Kitten too now; rename it.
