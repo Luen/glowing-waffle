@@ -3,12 +3,12 @@
 
 Loads a model with the *same* sherpa-onnx config the app uses in
 lib/tts/tts_engine_mobile.dart, synthesizes a sentence and writes a WAV. Run
-scripts/download_kokoro.sh first (add --kitten for the small model):
+scripts/download_tts_model.sh first (pass kitten for the small model):
 
     pip install -r scripts/requirements.txt
-    scripts/download_kokoro.sh
+    scripts/download_tts_model.sh
     python scripts/smoke_tts.py --out /tmp/hello.wav "Hello from Glowing Waffle."
-    scripts/download_kokoro.sh --kitten
+    scripts/download_tts_model.sh kitten
     python scripts/smoke_tts.py --engine kitten --out /tmp/kitten.wav
 """
 import argparse
@@ -80,7 +80,7 @@ def main() -> int:
     assets = args.assets or spec["assets"]
     missing = [f for f in spec["files"] + [spec["onnx"]] if not (assets / f).exists()]
     if missing:
-        stage = "scripts/download_kokoro.sh" + (" --kitten" if args.engine == "kitten" else "")
+        stage = "scripts/download_tts_model.sh" + (" kitten" if args.engine == "kitten" else "")
         print(f"Missing in {assets}: {', '.join(missing)}. Run {stage}", file=sys.stderr)
         return 2
 
