@@ -1,10 +1,15 @@
 param(
+    [Parameter(Position = 0)]
+    [ValidateSet("kokoro", "kitten")]
+    [string]$Model = "kokoro",
+
+    # Old spelling of the model argument; still accepted.
     [switch]$Kitten
 )
 # Download a sherpa-onnx TTS model and place the files scripts/smoke_tts.py
 # needs into the assets directory of the app.
-#   (default)  Kokoro v1.0   -> assets/tts/         (~340MB)
-#   -Kitten    Kitten nano   -> assets/tts_kitten/  (~25MB)
+#   kokoro (default)  Kokoro v1.0   -> assets/tts/         (~340MB)
+#   kitten            Kitten nano   -> assets/tts_kitten/  (~25MB)
 # Needed by the smoke test and by offline development builds; the app itself
 # downloads the model on first run (issues #6, #7).
 # See: https://k2-fsa.github.io/sherpa/onnx/tts/pretrained_models/kokoro.html
@@ -12,6 +17,10 @@ param(
 $ErrorActionPreference = "Stop"
 
 if ($Kitten) {
+    $Model = "kitten"
+}
+
+if ($Model -eq "kitten") {
     $name = "kitten-nano-en-v0_2-fp16"
     $assetsDir = "assets\tts_kitten"
     $files = @("model.fp16.onnx", "tokens.txt", "voices.bin")

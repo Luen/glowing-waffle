@@ -64,15 +64,15 @@ is pressed, and the confirmation names the file and where it went.
    **Linux / macOS:**
 
    ```bash
-   scripts/download_kokoro.sh          # assets/tts/
-   scripts/download_kokoro.sh --kitten # assets/tts_kitten/
+   scripts/download_tts_model.sh        # assets/tts/
+   scripts/download_tts_model.sh kitten # assets/tts_kitten/
    ```
 
    **Windows (PowerShell):**
 
    ```powershell
-   .\scripts\download_kokoro.ps1
-   .\scripts\download_kokoro.ps1 -Kitten
+   .\scripts\download_tts_model.ps1
+   .\scripts\download_tts_model.ps1 kitten
    ```
 
    The script downloads the matching sherpa-onnx release ([kokoro-multi-lang-v1_0](https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2), [kitten-nano-en-v0_2-fp16](https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kitten-nano-en-v0_2-fp16.tar.bz2)) and stages the files above. Then re-add the directory to `pubspec.yaml` under `flutter:` (`assets: [assets/tts/]` or `assets: [assets/tts_kitten/]`) — it is deliberately absent, so without that line the files are ignored (and, importantly, not copied into `build/web`).
@@ -97,6 +97,21 @@ is pressed, and the confirmation names the file and where it went.
    flutter run -d android
    ```
 
+   Release builds are **arm64-v8a only**: the models are CPU-bound, so 32-bit
+   phones and x86 emulators are not realistic targets (issue #40).
+   `android/app/build.gradle.kts` drops the other ABI folders under
+   `packaging`, and the release workflow builds with:
+
+   ```bash
+   flutter build apk --release --target-platform android-arm64
+   flutter build appbundle --release --target-platform android-arm64
+   ```
+
+   That produces one ~44 MB APK with the plain `versionCode` (instead of the
+   126 MB universal APK), and the workflow asserts the APK contains only
+   `arm64-v8a`. `flutter run` on an x86_64 emulator no longer works — use a
+   physical device.
+
 3. **iOS**  
 
    ```bash
@@ -111,6 +126,31 @@ is pressed, and the confirmation names the file and where it went.
    flutter run -d macos
    ```
 
+## Signing release builds
+
+Android release builds are **debug-signed** unless an upload key is configured,
+so `flutter run --release` works on a fresh checkout but the artifact cannot be
+published. Give Gradle the key in `android/key.properties` (git-ignored):
+
+```properties
+storeFile=/absolute/path/to/upload.jks
+storePassword=…
+keyAlias=upload
+keyPassword=…
+```
+
+or through the equivalent environment variables (`ANDROID_KEYSTORE_PATH`,
+`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`). The
+release workflow uses the environment form: it writes `android/key.properties`
+from the `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` secrets, prints the signing
+certificate, and stays debug-signed (with a log line saying so) when the
+secrets are absent.
+
+iOS and macOS release signing still needs an Apple Developer account plus the
+matching certificates, provisioning profiles and notarization credentials
+(issue #11).
+
 ## Checking it works (CPU, no device needed)
 
 ```bash
@@ -118,8 +158,8 @@ is pressed, and the confirmation names the file and where it went.
 flutter analyze && flutter test && flutter build web
 
 # Native engine: same sherpa-onnx configs as lib/tts/tts_engine_mobile.dart
-scripts/download_kokoro.sh
-scripts/download_kokoro.sh --kitten
+scripts/download_tts_model.sh
+scripts/download_tts_model.sh kitten
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r scripts/requirements.txt
 python scripts/smoke_tts.py --out native-smoke.wav "Hello from Glowing Waffle."
@@ -129,14 +169,17 @@ python scripts/smoke_tts.py --engine kitten --out kitten-smoke.wav
 cd scripts/web_smoke && npm ci && node smoke.mjs ../../web-smoke.wav
 ```
 
-CI (`.github/workflows/ci.yml`) runs all of the above and uploads the WAVs as an artifact.
+CI (`.github/workflows/ci.yml`) runs all of the above and uploads the WAVs as an
+artifact. It also does a release-mode Android build (arm64) and, on a macOS
+runner, release builds for macOS and iOS (`--no-codesign`), so AGP/Gradle and
+Xcode/plugin breakage shows up in a PR instead of at tag time.
 
 ## Project layout
 
 - `lib/` – Flutter app (Riverpod state, screens, TTS bridge).
 - `lib/tts/` – TTS engine interface and platform implementations (web vs native), plus `tts_models.dart` (models, voices and their archives) and `model_store.dart` (first-run model download).
 - `web/` – Web entry and `tts_bridge.js` (Kokoro via kokoro-js and Web Audio).
-- `assets/tts/`, `assets/tts_kitten/` – optional staged model files for offline development (`scripts/download_kokoro.sh [--kitten]`); not bundled unless declared in `pubspec.yaml`.
+- `assets/tts/`, `assets/tts_kitten/` – optional staged model files for offline development (`scripts/download_tts_model.sh [kokoro|kitten]`); not bundled unless declared in `pubspec.yaml`.
 
 ## Architecture
 
@@ -152,4 +195,6 @@ See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). The models and libraries
 are permissively licensed (Apache-2.0/MIT) with one exception: sherpa-onnx
 compiles **espeak-ng (GPL-3.0-or-later)** into the native library every native
 build ships, so native builds contain GPL-3.0 code (open question and tracking
-in #32). Glowing Waffle's own licence is not decided yet.
+in #32). The licence texts themselves are in [`LICENSES/`](LICENSES/): GPLv3 for
+espeak-ng and Apache-2.0 for sherpa-onnx and the models. Glowing Waffle's own
+licence is not decided yet.
