@@ -44,11 +44,45 @@ the app also downloads the `espeak-ng-data` phonemizer data at runtime.
   `/usr/share/espeak-ng-data`, `ESPEAK_DATA_PATH`.
 
 **Open question:** how k2-fsa reconciles Apache-2.0 sherpa-onnx with the linked
-espeak-ng has not been confirmed with the project. Until it is, treat every
-native build as containing GPL-3.0-or-later code. Tracked in #32.
+espeak-ng has not been confirmed with the project. Their repository ships a
+plain Apache-2.0 `LICENSE` and no `NOTICE` that mentions espeak-ng (checked
+2026-10-20). Until they answer, treat every native build as containing
+GPL-3.0-or-later code. Tracked in #32.
 
 ## Adding a dependency
 
 When a new model, native library or bundled asset is added, add a row above.
 For a model, record its source URL and licence next to its pin in
 `lib/tts/tts_models.dart` where practical.
+
+## Licence texts
+
+Distributions of the app need the text of the licences whose terms ask for one:
+
+- [`LICENSES/GPL-3.0-or-later.txt`](LICENSES/GPL-3.0-or-later.txt) — GPLv3, for
+  the espeak-ng code inside the native library and the downloaded
+  `espeak-ng-data`.
+- [`LICENSES/Apache-2.0.txt`](LICENSES/Apache-2.0.txt) — Apache-2.0 asks for a
+  copy with the work; it covers sherpa-onnx, the Kokoro and Kitten weights and
+  `kokoro-js`.
+
+MIT/BSD-3-Clause dependencies only require their copyright notice, which their
+packages carry (`~/.pub-cache/hosted/pub.dev/<package>/LICENSE`,
+`node_modules/<package>/LICENSE`).
+
+## Where the GPL source is
+
+The espeak-ng code is compiled into the `libsherpa-onnx-c-api` libraries that
+the `sherpa_onnx_*` packages ship. This repository does not modify those
+binaries; they are the upstream release artifacts, and the complete
+corresponding source is published:
+
+- sherpa-onnx (the build that compiles espeak-ng in):
+  <https://github.com/k2-fsa/sherpa-onnx> (Apache-2.0)
+- espeak-ng: <https://github.com/espeak-ng/espeak-ng> (GPL-3.0-or-later)
+- the `espeak-ng-data` archive the app downloads: the
+  [`tts-models` release](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models)
+  of the same project
+
+This points at the source; it is not a legal conclusion about whether the
+combined work has to be GPL-3.0 as a whole.

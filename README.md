@@ -195,4 +195,6 @@ See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). The models and libraries
 are permissively licensed (Apache-2.0/MIT) with one exception: sherpa-onnx
 compiles **espeak-ng (GPL-3.0-or-later)** into the native library every native
 build ships, so native builds contain GPL-3.0 code (open question and tracking
-in #32). Glowing Waffle's own licence is not decided yet.
+in #32). The licence texts themselves are in [`LICENSES/`](LICENSES/): GPLv3 for
+espeak-ng and Apache-2.0 for sherpa-onnx and the models. Glowing Waffle's own
+licence is not decided yet.
