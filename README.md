@@ -10,9 +10,8 @@ Client-side TTS app: read aloud text and websites using **Kokoro 82M** or the sm
 - **Android / iOS / macOS**: Kokoro 82M or KittenTTS nano via Sherpa-ONNX. The selected model is **downloaded on first run** instead of being bundled (~350 MB for Kokoro, ~25 MB for Kitten), so the app itself stays small; the **Model** dropdown switches between them and the setup card names the one that is missing. Includes a **Web Reader** tab to load a URL and read extracted text aloud.
 
 On every platform **Save WAV** writes the current text (or the Web Reader page) to a
-single 24 kHz WAV file: a download on web, the downloads folder on desktop and
-Android, and the app's Documents folder on iOS (visible in the Files app). See
-[Saving audio](#saving-audio).
+single 24 kHz WAV file: a download on web, the Downloads folder on desktop, and
+the system share sheet on Android and iOS. See [Saving audio](#saving-audio).
 
 ## Saving audio
 
@@ -21,11 +20,14 @@ speed again — it does not record playback — and writes one file:
 
 - **Web**: the bytes become a Blob and the browser downloads them
   (`downloadWav()` in `web/tts_bridge.js`).
-- **Android / macOS / Windows / Linux**: the `Downloads` folder.
-- **iOS**: the app's Documents folder, shown by the Files app as
-  *On My iPhone → Glowing Waffle* (`UIFileSharingEnabled` in
-  `ios/Runner/Info.plist`). The macOS sandbox needs
+- **macOS / Windows / Linux**: the `Downloads` folder. The macOS sandbox needs
   `com.apple.security.files.downloads.read-write` in `macos/Runner/*.entitlements`.
+- **Android / iOS**: the system share sheet. Neither platform lets an app write
+  to a shared, user-visible folder without a picker — on Android
+  `getDownloadsDirectory()` resolves to
+  `/storage/emulated/0/Android/data/<package>/files/Download`, which no file
+  manager or USB transfer shows (issue #17). The share sheet keeps the choice
+  with the user: Files, Drive, a chat, a mounted drive…
 
 Multi-sentence input and whole Web Reader pages become a single WAV: the web
 bridge renders its sentence chunks and joins them with a short pause, and the

@@ -8,9 +8,9 @@ import 'audio_saver_io.dart' if (dart.library.js_interop) 'audio_saver_web.dart'
 /// Platform-specific implementations are selected via conditional imports:
 /// a file in the downloads folder on native, a browser download on web.
 abstract class AudioSaver {
-  /// Writes [bytes] as [fileName] and returns a description of where they went,
-  /// suitable for showing to the user: a path on native, or a generic
-  /// description on web where the browser owns the download location.
+  /// Writes [bytes] as [fileName] and returns a message to show the user
+  /// ("Saved … to a path" on desktop, the share sheet on mobile, a download
+  /// on web), because only the implementation knows where the file ended up.
   ///
   /// Throws when the audio cannot be saved.
   Future<String> save(Uint8List bytes, String fileName);
