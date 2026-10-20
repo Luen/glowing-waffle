@@ -326,8 +326,6 @@ Then reference it from the PR ("Not in this PR: #NN") so the two stay connected.
 - #11 iOS/macOS release signing: Android now takes an upload key from
   `android/key.properties` or `ANDROID_*` env vars; Apple certificates,
   provisioning profiles and notarization still need an account.
-- #23 TTS settings are **not persisted** — voice, speed, model and backend reset
-  on every restart. Worth a `shared_preferences` pass.
 - #25 Evaluate the newer `kitten-nano-en-v0_8` (and micro/mini) checkpoints.
 - #27 `_playGenerated` waits on just_audio's state stream with no timeout, so a
   missing completion leaves the UI on "Playing".
