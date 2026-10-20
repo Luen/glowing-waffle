@@ -344,9 +344,9 @@ Then reference it from the PR ("Not in this PR: #NN") so the two stay connected.
 - #31 Kokoro `multi-lang-v1_1` (103 speakers) needs a decision first: web and
   native deliberately share voice ids, so the two lists would have to diverge or
   move together.
-- #32 Third-party notices now live in `THIRD_PARTY_NOTICES.md`, but the app has
-  no `LICENSE` of its own and k2-fsa has not been asked about the linked
-  espeak-ng (GPL-3.0).
+- #32 Third-party notices live in `THIRD_PARTY_NOTICES.md` and the GPLv3 /
+  Apache-2.0 texts in `LICENSES/`; the app still has no `LICENSE` of its own,
+  and k2-fsa has not answered the linked espeak-ng (GPL-3.0) question.
 - #33 Survey of VoiceStudio / Chatterbox / kokoro-web / IndexTTS; its actionable
   items are #29–#32.
 - #36 The web smoke test's `sharp` carried three high advisories (fixed by PR
