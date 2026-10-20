@@ -326,9 +326,10 @@ Then reference it from the PR ("Not in this PR: #NN") so the two stay connected.
 - #11 iOS/macOS release signing: Android now takes an upload key from
   `android/key.properties` or `ANDROID_*` env vars; Apple certificates,
   provisioning profiles and notarization still need an account.
-- #25 Evaluate the newer `kitten-nano-en-v0_8` (and micro/mini) checkpoints.
-- #27 `_playGenerated` waits on just_audio's state stream with no timeout, so a
-  missing completion leaves the UI on "Playing".
+- #25 Evaluate the newer `kitten-nano-en-v0_8` (and micro/mini) checkpoints:
+  all four load with the app's Kitten config and are measurably faster or
+  slower, but the audio sounds different; it needs a listen before the pinned
+  checkpoint changes.
 - #29 IndexTTS is not a drop-in engine (needs a second runtime, GB weights and a
   restrictive licence); ZipVoice, via the sherpa-onnx we already ship, is the
   on-device voice-cloning candidate.
@@ -340,5 +341,6 @@ Then reference it from the PR ("Not in this PR: #NN") so the two stay connected.
   and k2-fsa has not answered the linked espeak-ng (GPL-3.0) question.
 - #33 Survey of VoiceStudio / Chatterbox / kokoro-web / IndexTTS; its actionable
   items are #29–#32.
-- #36 The web smoke test's `sharp` carried three high advisories (fixed by PR
-  #37 via an override); `sprintf-js` still has no patched release.
+- #51 Audio8 TTS is a 0.1B/0.6B cloning model that needs a runtime of its own
+  (upstream ships a Python service), ~0.6–1 GB of models and 44.1 kHz audio;
+  only worth it if voice cloning becomes product scope.
