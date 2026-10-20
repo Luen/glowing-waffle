@@ -323,8 +323,6 @@ Then reference it from the PR ("Not in this PR: #NN") so the two stay connected.
 
 ## Open work (Oct 2026)
 
-- #8 Verify Android, iOS and macOS builds on real toolchains (macOS CI job, iOS
-  minimum version for `sherpa_onnx_ios`).
 - #11 Store signing for release builds (secrets required).
 - #14 Allow saving the generated audio to a file — PR #19 predates the model and
   engine refactors and now conflicts in 10 files; it needs a rebase.

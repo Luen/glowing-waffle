@@ -129,7 +129,10 @@ python scripts/smoke_tts.py --engine kitten --out kitten-smoke.wav
 cd scripts/web_smoke && npm ci && node smoke.mjs ../../web-smoke.wav
 ```
 
-CI (`.github/workflows/ci.yml`) runs all of the above and uploads the WAVs as an artifact.
+CI (`.github/workflows/ci.yml`) runs all of the above and uploads the WAVs as an
+artifact. It also does a release-mode Android build (arm64) and, on a macOS
+runner, release builds for macOS and iOS (`--no-codesign`), so AGP/Gradle and
+Xcode/plugin breakage shows up in a PR instead of at tag time.
 
 ## Project layout
 

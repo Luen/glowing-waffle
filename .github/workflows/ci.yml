@@ -51,3 +51,36 @@ jobs:
         with:
           name: smoke-audio
           path: '*-smoke.wav'
+
+  android-build:
+    # Release-mode Gradle build on a clean runner: unit tests never touch AGP,
+    # the NDK or plugin build scripts (issue #8). arm64-only, like the release
+    # workflow (issue #40).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build apk --release --target-platform android-arm64
+
+  apple-build:
+    # macOS and iOS builds need Xcode, so they used to be verified only on the
+    # maintainer's machine (issue #8). The iOS build is unsigned on purpose:
+    # CI has no certificates or provisioning profiles (issue #11).
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build macos --release
+      - run: flutter build ios --no-codesign --release
