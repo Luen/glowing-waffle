@@ -106,6 +106,12 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            // R8 runs on release builds; the rules keep the JNI entry points
+            // that shared_preferences calls by name (issue #58).
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }
