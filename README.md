@@ -111,6 +111,31 @@ is pressed, and the confirmation names the file and where it went.
    flutter run -d macos
    ```
 
+## Signing release builds
+
+Android release builds are **debug-signed** unless an upload key is configured,
+so `flutter run --release` works on a fresh checkout but the artifact cannot be
+published. Give Gradle the key in `android/key.properties` (git-ignored):
+
+```properties
+storeFile=/absolute/path/to/upload.jks
+storePassword=…
+keyAlias=upload
+keyPassword=…
+```
+
+or through the equivalent environment variables (`ANDROID_KEYSTORE_PATH`,
+`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`). The
+release workflow uses the environment form: it writes `android/key.properties`
+from the `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` secrets, prints the signing
+certificate, and stays debug-signed (with a log line saying so) when the
+secrets are absent.
+
+iOS and macOS release signing still needs an Apple Developer account plus the
+matching certificates, provisioning profiles and notarization credentials
+(issue #11).
+
 ## Checking it works (CPU, no device needed)
 
 ```bash

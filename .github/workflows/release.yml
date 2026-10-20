@@ -7,8 +7,11 @@ name: Release builds
 #
 # The model (~350 MB) is not bundled any more: the app downloads it on first
 # run into its support directory (issue #7), so no build step needs
-# scripts/download_kokoro.sh and the artifacts stay small. Builds are unsigned;
-# see the signing issue for secrets.
+# scripts/download_kokoro.sh and the artifacts stay small.
+
+# The Android artifacts are signed with the upload key when the
+# ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS /
+# ANDROID_KEY_PASSWORD secrets exist, and debug-signed otherwise (#11).
 
 on:
   release:
@@ -43,8 +46,37 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Configure the upload keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "No ANDROID_KEYSTORE_BASE64 secret: the APK/AAB will be debug-signed."
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/upload.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/upload.jks"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > android/key.properties
       - run: flutter build apk --release --split-per-abi
       - run: flutter build appbundle --release
+      - name: Verify the release signature
+        run: |
+          if [ ! -f android/key.properties ]; then
+            echo "Debug-signed build (no upload key configured)."
+            exit 0
+          fi
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          for apk in build/app/outputs/flutter-apk/app-*-release.apk; do
+            echo "== $apk"
+            "$APKSIGNER" verify --print-certs "$apk"
+          done
       - name: Collect
         run: |
           mkdir -p dist
