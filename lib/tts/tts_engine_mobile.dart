@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:archive/archive_io.dart';
@@ -5,14 +6,15 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa_onnx;
 
 import '../state/tts_app_state.dart';
+import 'backup_exclusion.dart';
 import 'model_progress.dart';
 import 'model_store.dart';
 import 'text_chunker.dart';
 import 'tts_engine.dart';
 import 'tts_models.dart';
+import 'tts_worker.dart';
 import 'wav.dart';
 
 /// Native implementation: Kokoro 82M or KittenTTS nano via Sherpa-ONNX.
@@ -28,11 +30,13 @@ import 'wav.dart';
 /// A build that declares `assets: [assets/tts/]` (Kokoro) or
 /// `assets: [assets/tts_kitten/]` (Kitten) in pubspec.yaml is imported instead
 /// of downloaded, so offline development keeps working.
+///
+/// Model loading and inference run on a background isolate (see [TtsWorker]):
+/// they are synchronous native calls that froze the UI for seconds and made
+/// Android raise "Read aloud isn't responding" (issue #39).
 class TtsEngineMobile implements TtsEngine {
-  sherpa_onnx.OfflineTts? _tts;
-
-  /// Which model [_tts] was built from, so switching models rebuilds it.
-  TtsModel? _ttsModel;
+  /// Owns the `OfflineTts` instance, off the UI isolate.
+  TtsWorker? _worker;
 
   /// Model the next synthesis uses (see [setModel]).
   TtsModel _model = TtsModel.kokoro;
@@ -40,6 +44,9 @@ class TtsEngineMobile implements TtsEngine {
   final AudioPlayer _player = AudioPlayer();
   String? _supportPath;
   final Set<TtsModel> _importedAssets = {};
+
+  /// Models whose directory has been excluded from iOS backups (#20).
+  final Set<TtsModel> _backupExcluded = {};
 
   /// Speaker id derived from the selected voice (index in [TtsModel.voices]).
   int _sid = 3; // af_heart
@@ -58,6 +65,11 @@ class TtsEngineMobile implements TtsEngine {
         _supportPath ??= (await getApplicationSupportDirectory()).path;
     final dir = Directory('$support/tts_models/${model.wireName}');
     await dir.create(recursive: true);
+    if (Platform.isIOS && _backupExcluded.add(model)) {
+      // ~350 MB of re-downloadable data must not be uploaded on every iCloud
+      // backup (#20). Idempotent, but only worth a channel round-trip once.
+      await excludeFromBackup(dir);
+    }
     if (_importedAssets.add(model)) {
       await _importBundledAssets(model, dir);
     }
@@ -108,21 +120,23 @@ class TtsEngineMobile implements TtsEngine {
     }
   }
 
-  /// Switches model: the engine is rebuilt on the next synthesis, because the
-  /// two models need different sherpa-onnx configs. The loaded one is freed
-  /// first (Kokoro alone holds ~325 MB of weights).
+  /// Switches model: the worker loads it on the next synthesis, because the two
+  /// models need different sherpa-onnx configs. The loaded one is freed right
+  /// away (Kokoro alone holds ~325 MB of weights), off the UI isolate.
   @override
   Future<void> setModel(TtsModel model) async {
     if (model == _model) return;
     _model = model;
     _sid = model.voices.indexOf(model.defaultVoice);
-    _tts?.free();
-    _tts = null;
-    _ttsModel = null;
+    await _worker?.unload();
   }
 
-  Future<sherpa_onnx.OfflineTts> _getTts() async {
-    if (_tts != null && _ttsModel == _model) return _tts!;
+  /// The worker, configured for [_model] and ready to synthesize.
+  ///
+  /// Tells the worker which files to load (a no-op when it already holds them)
+  /// and throws before that when the model is not installed, so Play and Save
+  /// report the same message as before.
+  Future<TtsWorker> _readyWorker() async {
     final model = _model;
     final modelDir = await _modelDir(model);
     if (!await _store(model, modelDir).isReady()) {
@@ -131,49 +145,54 @@ class TtsEngineMobile implements TtsEngine {
         'Download it first.',
       );
     }
-    sherpa_onnx.initBindings();
+    final worker = _worker ??= TtsWorker();
+    await worker.start();
     final path = modelDir.path;
-    final modelConfig = sherpa_onnx.OfflineTtsModelConfig(
-      kokoro: model == TtsModel.kokoro
-          ? sherpa_onnx.OfflineTtsKokoroModelConfig(
-              model: '$path/${model.onnxFile}',
-              tokens: '$path/tokens.txt',
-              voices: '$path/voices.bin',
-              dataDir: '$path/$kEspeakDataDir',
-              lexicon: '$path/lexicon-us-en.txt',
-              lang: 'en-us',
-            )
-          : const sherpa_onnx.OfflineTtsKokoroModelConfig(),
-      kitten: model == TtsModel.kitten
-          ? sherpa_onnx.OfflineTtsKittenModelConfig(
-              model: '$path/${model.onnxFile}',
-              tokens: '$path/tokens.txt',
-              voices: '$path/voices.bin',
-              dataDir: '$path/$kEspeakDataDir',
-            )
-          : const sherpa_onnx.OfflineTtsKittenModelConfig(),
-      numThreads: 2,
-      debug: false,
-      provider: 'cpu',
+    await worker.configure(
+      key: '${model.wireName}|$path',
+      kind: model.wireName,
+      model: '$path/${model.onnxFile}',
+      tokens: '$path/tokens.txt',
+      voices: '$path/voices.bin',
+      dataDir: '$path/$kEspeakDataDir',
+      // Kitten has no lexicon: espeak-ng does the phonemizing.
+      lexicon: model == TtsModel.kokoro ? '$path/lexicon-us-en.txt' : '',
     );
-    _tts?.free();
-    _tts = sherpa_onnx.OfflineTts(sherpa_onnx.OfflineTtsConfig(
-      model: modelConfig,
-    ));
-    _ttsModel = model;
-    return _tts!;
+    return worker;
   }
 
-  Future<void> _playGenerated(sherpa_onnx.GeneratedAudio audio) async {
+  Future<void> _playGenerated(WorkerAudio audio) async {
     final wavPath = await _writeWav(audio.samples, audio.sampleRate);
-    await _player.setFilePath(wavPath);
-    await _player.play();
-    await _player.processingStateStream.firstWhere(
-      (s) => s == ProcessingState.completed || s == ProcessingState.idle,
-    );
     try {
-      File(wavPath).deleteSync();
-    } catch (_) {}
+      await _player.setFilePath(wavPath);
+      await _player.play();
+      // just_audio normally reports completion, but not always: a headless
+      // macOS run never did, which left the app stuck on "Playing" until Stop
+      // was pressed (#27). Give the clip its own length plus a margin, then
+      // treat it as finished.
+      final length = Duration(
+        microseconds:
+            audio.samples.length * Duration.microsecondsPerSecond ~/
+                audio.sampleRate,
+      );
+      try {
+        await _player.processingStateStream
+            .firstWhere(
+              (s) =>
+                  s == ProcessingState.completed || s == ProcessingState.idle,
+            )
+            .timeout(length + const Duration(seconds: 5));
+      } on TimeoutException {
+        // Stop first: otherwise the next chunk would talk over this one.
+        await _player.stop();
+      }
+    } finally {
+      // Also on an interrupted wait (stop pressed, error): the temp file must
+      // not outlive the run.
+      try {
+        File(wavPath).deleteSync();
+      } catch (_) {}
+    }
   }
 
   Future<String> _writeWav(Float32List samples, int sampleRate) async {
@@ -194,8 +213,8 @@ class TtsEngineMobile implements TtsEngine {
   @override
   Future<RenderedAudio> renderSamples(String text) async {
     if (text.trim().isEmpty) return RenderedAudio(Float32List(0));
-    final tts = await _getTts();
-    final audio = tts.generate(text: text, sid: _sid, speed: _speed);
+    final worker = await _readyWorker();
+    final audio = await worker.generate(text: text, sid: _sid, speed: _speed);
     return RenderedAudio(audio.samples, sampleRate: audio.sampleRate);
   }
 
@@ -214,10 +233,11 @@ class TtsEngineMobile implements TtsEngine {
     final chunks = splitIntoChunks(text);
     if (chunks.isEmpty) return;
     final runId = ++_runId;
-    final tts = await _getTts();
+    final worker = await _readyWorker();
     for (final chunk in chunks) {
       if (runId != _runId) return;
-      final audio = tts.generate(text: chunk, sid: _sid, speed: _speed);
+      final audio =
+          await worker.generate(text: chunk, sid: _sid, speed: _speed);
       if (runId != _runId) return;
       await _playGenerated(audio);
     }

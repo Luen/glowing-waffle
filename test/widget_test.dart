@@ -107,7 +107,7 @@ class FakeAudioSaver implements AudioSaver {
   Future<String> save(Uint8List bytes, String fileName) async {
     if (error != null) throw error!;
     saved.add((fileName: fileName, bytes: bytes));
-    return '/tmp/downloads';
+    return 'Saved $fileName to /tmp/downloads';
   }
 }
 
@@ -213,7 +213,8 @@ void main() {
     expect(saved.bytes.sublist(8, 12), 'WAVE'.codeUnits);
 
     expect(
-      find.textContaining('Saved aloud-hello-world-this-is-a-second-af_heart.wav'),
+      find.textContaining(
+          'Saved aloud-hello-world-this-is-a-second-af_heart.wav'),
       findsOneWidget,
     );
     expect(find.text('Save WAV'), findsOneWidget);

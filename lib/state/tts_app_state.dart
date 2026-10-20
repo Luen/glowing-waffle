@@ -1,5 +1,9 @@
 import '../tts/tts_models.dart';
 
+/// Speed slider bounds, shared by the UI and the stored settings.
+const double kMinSpeed = 0.5;
+const double kMaxSpeed = 2.0;
+
 /// App status for TTS pipeline.
 enum AppStatus {
   idle,
