@@ -8,6 +8,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../state/tts_app_state.dart';
+import 'backup_exclusion.dart';
 import 'model_progress.dart';
 import 'model_store.dart';
 import 'text_chunker.dart';
@@ -44,6 +45,9 @@ class TtsEngineMobile implements TtsEngine {
   String? _supportPath;
   final Set<TtsModel> _importedAssets = {};
 
+  /// Models whose directory has been excluded from iOS backups (#20).
+  final Set<TtsModel> _backupExcluded = {};
+
   /// Speaker id derived from the selected voice (index in [TtsModel.voices]).
   int _sid = 3; // af_heart
 
@@ -61,6 +65,11 @@ class TtsEngineMobile implements TtsEngine {
         _supportPath ??= (await getApplicationSupportDirectory()).path;
     final dir = Directory('$support/tts_models/${model.wireName}');
     await dir.create(recursive: true);
+    if (Platform.isIOS && _backupExcluded.add(model)) {
+      // ~350 MB of re-downloadable data must not be uploaded on every iCloud
+      // backup (#20). Idempotent, but only worth a channel round-trip once.
+      await excludeFromBackup(dir);
+    }
     if (_importedAssets.add(model)) {
       await _importBundledAssets(model, dir);
     }
