@@ -7,7 +7,7 @@ name: Release builds
 #
 # The model (~350 MB) is not bundled any more: the app downloads it on first
 # run into its support directory (issue #7), so no build step needs
-# scripts/download_kokoro.sh and the artifacts stay small.
+# scripts/download_tts_model.sh and the artifacts stay small.
 
 # The Android artifacts are signed with the upload key when the
 # ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS /

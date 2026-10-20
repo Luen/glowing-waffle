@@ -64,15 +64,15 @@ is pressed, and the confirmation names the file and where it went.
    **Linux / macOS:**
 
    ```bash
-   scripts/download_kokoro.sh          # assets/tts/
-   scripts/download_kokoro.sh --kitten # assets/tts_kitten/
+   scripts/download_tts_model.sh        # assets/tts/
+   scripts/download_tts_model.sh kitten # assets/tts_kitten/
    ```
 
    **Windows (PowerShell):**
 
    ```powershell
-   .\scripts\download_kokoro.ps1
-   .\scripts\download_kokoro.ps1 -Kitten
+   .\scripts\download_tts_model.ps1
+   .\scripts\download_tts_model.ps1 kitten
    ```
 
    The script downloads the matching sherpa-onnx release ([kokoro-multi-lang-v1_0](https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2), [kitten-nano-en-v0_2-fp16](https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kitten-nano-en-v0_2-fp16.tar.bz2)) and stages the files above. Then re-add the directory to `pubspec.yaml` under `flutter:` (`assets: [assets/tts/]` or `assets: [assets/tts_kitten/]`) — it is deliberately absent, so without that line the files are ignored (and, importantly, not copied into `build/web`).
@@ -158,8 +158,8 @@ matching certificates, provisioning profiles and notarization credentials
 flutter analyze && flutter test && flutter build web
 
 # Native engine: same sherpa-onnx configs as lib/tts/tts_engine_mobile.dart
-scripts/download_kokoro.sh
-scripts/download_kokoro.sh --kitten
+scripts/download_tts_model.sh
+scripts/download_tts_model.sh kitten
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r scripts/requirements.txt
 python scripts/smoke_tts.py --out native-smoke.wav "Hello from Glowing Waffle."
@@ -176,7 +176,7 @@ CI (`.github/workflows/ci.yml`) runs all of the above and uploads the WAVs as an
 - `lib/` – Flutter app (Riverpod state, screens, TTS bridge).
 - `lib/tts/` – TTS engine interface and platform implementations (web vs native), plus `tts_models.dart` (models, voices and their archives) and `model_store.dart` (first-run model download).
 - `web/` – Web entry and `tts_bridge.js` (Kokoro via kokoro-js and Web Audio).
-- `assets/tts/`, `assets/tts_kitten/` – optional staged model files for offline development (`scripts/download_kokoro.sh [--kitten]`); not bundled unless declared in `pubspec.yaml`.
+- `assets/tts/`, `assets/tts_kitten/` – optional staged model files for offline development (`scripts/download_tts_model.sh [kokoro|kitten]`); not bundled unless declared in `pubspec.yaml`.
 
 ## Architecture
 
