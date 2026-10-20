@@ -29,6 +29,21 @@ android {
         versionName = flutter.versionName
     }
 
+    packaging {
+        jniLibs {
+            // Only 64-bit ARM (issue #40). Flutter passes its own target
+            // platforms to Gradle and overrides ndk.abiFilters, and plugin
+            // AARs (sherpa-onnx) ship every ABI, so the unused ones are
+            // dropped here instead. That also keeps Play from offering the
+            // APK to devices whose engine is not in it.
+            excludes += listOf(
+                "lib/armeabi-v7a/**",
+                "lib/x86/**",
+                "lib/x86_64/**",
+            )
+        }
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
