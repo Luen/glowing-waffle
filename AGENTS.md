@@ -31,8 +31,8 @@ node --check web/tts_bridge.js
 End-to-end smoke tests use the same models and configs as the app. CI runs all of them:
 
 ```bash
-scripts/download_kokoro.sh                     # stages Kokoro (~360 MB) into assets/tts/
-scripts/download_kokoro.sh --kitten            # stages Kitten nano (~25 MB) into assets/tts_kitten/
+scripts/download_tts_model.sh        # stages Kokoro (~360 MB) into assets/tts/
+scripts/download_tts_model.sh kitten # stages Kitten nano (~25 MB) into assets/tts_kitten/
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r scripts/requirements.txt
 python scripts/smoke_tts.py --out native-smoke.wav
@@ -60,7 +60,7 @@ python3 -m http.server 8099 -d build/web-preview   # build/web needs an http ori
 | which screen/tabs exist per platform | `lib/screens/home_screen.dart` (conditional import), `home_screen_web.dart`, `home_screen_io.dart` |
 | which engine is used | `lib/tts/tts_engine_impl.dart` (conditional import) |
 | which models exist, their files, archives, pins and voices | `lib/tts/tts_models.dart` (single source; mirrored by `scripts/smoke_tts.py`) |
-| native model files | `lib/tts/model_store.dart` (download + extract), `lib/tts/tts_engine_mobile.dart` (where they live, which sherpa config), `scripts/download_kokoro.sh [--kitten]` (staging for the smoke test) |
+| native model files | `lib/tts/model_store.dart` (download + extract), `lib/tts/tts_engine_mobile.dart` (where they live, which sherpa config), `scripts/download_tts_model.sh [kokoro|kitten]` (staging for the smoke test) |
 | CI / release builds | `.github/workflows/ci.yml`, `.github/workflows/release.yml` |
 
 ## Platform split
@@ -146,7 +146,7 @@ Rules that are not obvious from reading the code:
   pushes a change to the engine when the picker moves — without that, the
   readiness check still asks about the *old* model.
 - **Bundling is opt-in** — declaring `assets: [assets/tts/]` (Kokoro, staged by
-  `scripts/download_kokoro.sh`) or `assets: [assets/tts_kitten/]` (Kitten,
+  `scripts/download_tts_model.sh`) or `assets: [assets/tts_kitten/]` (Kitten,
   `--kitten`) in `pubspec.yaml` makes the app import that copy and never
   download; leave either out of `pubspec.yaml` or a web build picks up hundreds
   of MB of model files. The same staged files are what the smoke tests load.
@@ -323,7 +323,9 @@ Then reference it from the PR ("Not in this PR: #NN") so the two stay connected.
 
 ## Open work (Oct 2026)
 
-- #11 Store signing for release builds (secrets required).
+- #11 iOS/macOS release signing: Android now takes an upload key from
+  `android/key.properties` or `ANDROID_*` env vars; Apple certificates,
+  provisioning profiles and notarization still need an account.
 - #14 Allow saving the generated audio to a file — PR #19 predates the model and
   engine refactors and now conflicts in 10 files; it needs a rebase.
 - #20 iOS includes the downloaded models in iCloud device backups; excluding them
@@ -332,7 +334,6 @@ Then reference it from the PR ("Not in this PR: #NN") so the two stay connected.
   ~325 MB).
 - #23 TTS settings are **not persisted** — voice, speed, model and backend reset
   on every restart. Worth a `shared_preferences` pass.
-- #24 `scripts/download_kokoro.sh` stages Kitten too now; rename it.
 - #25 Evaluate the newer `kitten-nano-en-v0_8` (and micro/mini) checkpoints.
 - #27 `_playGenerated` waits on just_audio's state stream with no timeout, so a
   missing completion leaves the UI on "Playing".

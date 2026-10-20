@@ -6,14 +6,17 @@
 # on first run (issues #6, #7) and only use the assets directories below when
 # they are declared in pubspec.yaml.
 #
-# Usage: scripts/download_kokoro.sh [--kitten] [cache_dir]
-#   (default)  Kokoro v1.0  -> assets/tts/         (model.onnx, tokens.txt,
-#                                                  voices.bin,
-#                                                  lexicon-us-en.txt,
-#                                                  espeak-ng-data.zip)
-#   --kitten   Kitten nano  -> assets/tts_kitten/  (model.fp16.onnx,
-#                                                  tokens.txt, voices.bin,
-#                                                  espeak-ng-data.zip)
+# Usage: scripts/download_tts_model.sh [kokoro|kitten] [cache_dir]
+#   kokoro (default)  Kokoro v1.0  -> assets/tts/         (model.onnx,
+#                                                          tokens.txt,
+#                                                          voices.bin,
+#                                                          lexicon-us-en.txt,
+#                                                          espeak-ng-data.zip)
+#   kitten            Kitten nano  -> assets/tts_kitten/  (model.fp16.onnx,
+#                                                          tokens.txt,
+#                                                          voices.bin,
+#                                                          espeak-ng-data.zip)
+#   --kitten is still accepted as the old spelling of the model argument.
 set -euo pipefail
 
 MODEL="kokoro"
@@ -21,7 +24,8 @@ CACHE_ARG=""
 for arg in "$@"; do
   case "$arg" in
     --kitten) MODEL="kitten" ;;
-    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+    kokoro|kitten) MODEL="$arg" ;;
     *) CACHE_ARG="$arg" ;;
   esac
 done
