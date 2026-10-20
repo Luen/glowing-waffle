@@ -27,9 +27,6 @@ class PlaybackControls extends ConsumerWidget {
   /// hides the option instead of offering something that does nothing (#6).
   final bool showModelPicker;
 
-  static const double _minSpeed = 0.5;
-  static const double _maxSpeed = 2.0;
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(ttsStateProvider);
@@ -106,9 +103,9 @@ class PlaybackControls extends ConsumerWidget {
             ),
             Expanded(
               child: Slider(
-                value: state.speed.clamp(_minSpeed, _maxSpeed),
-                min: _minSpeed,
-                max: _maxSpeed,
+                value: state.speed.clamp(kMinSpeed, kMaxSpeed),
+                min: kMinSpeed,
+                max: kMaxSpeed,
                 divisions: 15,
                 label: '${state.speed.toStringAsFixed(2)}x',
                 onChanged: notifier.setSpeed,
