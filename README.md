@@ -97,6 +97,21 @@ is pressed, and the confirmation names the file and where it went.
    flutter run -d android
    ```
 
+   Release builds are **arm64-v8a only**: the models are CPU-bound, so 32-bit
+   phones and x86 emulators are not realistic targets (issue #40).
+   `android/app/build.gradle.kts` drops the other ABI folders under
+   `packaging`, and the release workflow builds with:
+
+   ```bash
+   flutter build apk --release --target-platform android-arm64
+   flutter build appbundle --release --target-platform android-arm64
+   ```
+
+   That produces one ~44 MB APK with the plain `versionCode` (instead of the
+   126 MB universal APK), and the workflow asserts the APK contains only
+   `arm64-v8a`. `flutter run` on an x86_64 emulator no longer works — use a
+   physical device.
+
 3. **iOS**  
 
    ```bash

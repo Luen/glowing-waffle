@@ -47,7 +47,7 @@ if (!hasUploadKey) {
 }
 
 android {
-    namespace = "com.example.glowing_waffle"
+    namespace = "dev.luen.glowingwaffle"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -58,7 +58,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.glowing_waffle"
+        applicationId = "dev.luen.glowingwaffle"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -79,6 +79,21 @@ android {
                 keyAlias = uploadKeyAlias
                 keyPassword = uploadKeyPassword
             }
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // Only 64-bit ARM (issue #40). Flutter passes its own target
+            // platforms to Gradle and overrides ndk.abiFilters, and plugin
+            // AARs (sherpa-onnx) ship every ABI, so the unused ones are
+            // dropped here instead. That also keeps Play from offering the
+            // APK to devices whose engine is not in it.
+            excludes += listOf(
+                "lib/armeabi-v7a/**",
+                "lib/x86/**",
+                "lib/x86_64/**",
+            )
         }
     }
 

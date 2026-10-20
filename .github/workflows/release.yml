@@ -64,8 +64,13 @@ jobs:
             echo "keyAlias=$KEY_ALIAS"
             echo "keyPassword=$KEY_PASSWORD"
           } > android/key.properties
-      - run: flutter build apk --release --split-per-abi
-      - run: flutter build appbundle --release
+      # arm64-v8a only (issue #40): the models are CPU-bound and 32-bit/x86
+      # builds are not realistic targets. Flutter always passes its own
+      # target platforms to Gradle, so the flag (not abiFilters) is what picks
+      # the ABI; the check below keeps a future edit from shipping the 126 MB
+      # universal APK by accident.
+      - run: flutter build apk --release --target-platform android-arm64
+      - run: flutter build appbundle --release --target-platform android-arm64
       - name: Verify the release signature
         run: |
           if [ ! -f android/key.properties ]; then
@@ -73,16 +78,20 @@ jobs:
             exit 0
           fi
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
-          for apk in build/app/outputs/flutter-apk/app-*-release.apk; do
+          for apk in build/app/outputs/flutter-apk/*-release.apk; do
             echo "== $apk"
             "$APKSIGNER" verify --print-certs "$apk"
           done
+      - name: Check the APK is arm64-only
+        run: |
+          abis=$(unzip -l build/app/outputs/flutter-apk/app-release.apk \
+            | awk '{print $4}' | grep '^lib/' | cut -d/ -f2 | sort -u)
+          echo "ABIs: $abis"
+          test "$abis" = "arm64-v8a"
       - name: Collect
         run: |
           mkdir -p dist
-          for f in build/app/outputs/flutter-apk/app-*-release.apk; do
-            cp "$f" "dist/glowing-waffle-android-$(basename "$f" | sed 's/^app-//; s/-release//')"
-          done
+          cp build/app/outputs/flutter-apk/app-release.apk dist/glowing-waffle-android-arm64-v8a.apk
           cp build/app/outputs/bundle/release/app-release.aab dist/glowing-waffle-android.aab
           ls -lh dist
       - uses: actions/upload-artifact@v7
@@ -120,7 +129,7 @@ jobs:
       - run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ninja-build libgtk-3-dev clang cmake pkg-config liblzma-dev
-      - run: flutter create --platforms=linux --org com.example --project-name glowing_waffle .
+      - run: flutter create --platforms=linux --org dev.luen --project-name glowing_waffle .
       - run: flutter pub get
       - run: flutter build linux --release
       - run: mkdir -p dist && tar -C build/linux/x64/release/bundle -czf dist/glowing-waffle-linux-x64.tar.gz . && ls -lh dist
@@ -141,7 +150,7 @@ jobs:
         with:
           channel: stable
           cache: true
-      - run: flutter create --platforms=windows --org com.example --project-name glowing_waffle .
+      - run: flutter create --platforms=windows --org dev.luen --project-name glowing_waffle .
       - run: flutter pub get
       - run: flutter build windows --release
       - shell: pwsh
