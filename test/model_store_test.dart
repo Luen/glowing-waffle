@@ -30,6 +30,17 @@ class _FixtureServer {
 
   int requests = 0;
 
+  /// When set, the next response announces the full length but sends only this
+  /// many bytes, then drops the connection: a phone losing Wi-Fi mid-download.
+  int? dropAfter;
+
+  /// Whether a `Range` request is honoured with a 206. Set false to model a
+  /// server/CDN that ignores ranges and sends the whole body again.
+  bool supportsRange = true;
+
+  /// The `Range` header of every request, in order.
+  final List<String?> ranges = [];
+
   Uri get uri => Uri.parse('http://127.0.0.1:${_http.port}/model.tar.bz2');
 
   Future<void> _handle(HttpRequest request) async {
@@ -40,8 +51,27 @@ class _FixtureServer {
       await response.close();
       return;
     }
-    response.headers.contentLength = body.length;
-    response.add(body);
+    final range = request.headers.value(HttpHeaders.rangeHeader);
+    ranges.add(range);
+    var start = 0;
+    if (range != null && supportsRange) {
+      start = int.parse(
+        RegExp(r'bytes=(\d+)-').firstMatch(range)!.group(1)!,
+      );
+      response.statusCode = HttpStatus.partialContent;
+    }
+    response.headers.contentLength = body.length - start;
+
+    final dropAfter = this.dropAfter;
+    if (dropAfter != null) {
+      this.dropAfter = null;
+      final socket = await response.detachSocket();
+      socket.add(body.sublist(start, dropAfter));
+      await socket.flush();
+      socket.destroy();
+      return;
+    }
+    response.add(body.sublist(start));
     await response.close();
   }
 
@@ -205,14 +235,46 @@ void main() {
     );
 
     expect(await storeFor().isReady(), isFalse);
-    expect(File('${modelDir.path}.part').existsSync(), isFalse);
+    expect(File('${modelDir.path}.tar.bz2.part').existsSync(), isFalse);
     expect(File('${modelDir.path}.tar.bz2').existsSync(), isFalse);
   });
 
-  test('fails on a truncated download and leaves no partial file', () async {
+  test('resumes a dropped download instead of starting over', () async {
     final archive = _buildArchive();
-    // The announced checksum is of the full archive, so a short body is caught
-    // either by the HTTP stack or by the checksum below it.
+    server.body = archive;
+    server.dropAfter = 32; // the first attempt dies after 32 bytes
+    final store = storeFor(sha256: crypto.sha256.convert(archive).toString());
+
+    await store.ensure();
+
+    expect(server.requests, 2);
+    // The retry asked for the rest, not for the whole 350 MB again.
+    expect(server.ranges, [isNull, 'bytes=32-']);
+    expect(await store.isReady(), isTrue);
+    expect(File('${modelDir.path}.tar.bz2').existsSync(), isFalse);
+    expect(File('${modelDir.path}.tar.bz2.part').existsSync(), isFalse);
+  });
+
+  test('restarts when the server ignores Range', () async {
+    final archive = _buildArchive();
+    server.body = archive;
+    server.supportsRange = false; // a CDN that always sends the whole body
+    await modelDir.create(recursive: true);
+    await File('${modelDir.path}.tar.bz2.part').writeAsBytes([9, 9, 9, 9]);
+    final store = storeFor(sha256: crypto.sha256.convert(archive).toString());
+
+    await store.ensure();
+
+    expect(server.ranges, ['bytes=4-']);
+    // A 200 body must truncate the part file: appending would corrupt the
+    // archive and fail the checksum.
+    expect(await store.isReady(), isTrue);
+    expect(File('${modelDir.path}.tar.bz2.part').existsSync(), isFalse);
+  });
+
+  test('gives up after a few attempts and keeps the bytes for a retry',
+      () async {
+    final archive = _buildArchive();
     final url = await _TruncatedServer.start(archive, 32);
     final store = ModelStore(
       model: TtsModel.kokoro,
@@ -221,10 +283,13 @@ void main() {
       sha256: crypto.sha256.convert(archive).toString(),
     );
 
-    await expectLater(store.ensure(), throwsA(isA<Exception>()));
+    await expectLater(store.ensure(), throwsA(isA<HttpException>()));
 
     expect(await store.isReady(), isFalse);
-    expect(File('${modelDir.path}.part').existsSync(), isFalse);
+    // Keeping the partial file is what makes the next run resume.
+    final part = File('${modelDir.path}.tar.bz2.part');
+    expect(part.existsSync(), isTrue);
+    expect(await part.length(), 32);
   });
 
   test('keeps the archive when extraction fails, so a retry is cheap',

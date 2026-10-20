@@ -31,8 +31,8 @@ node --check web/tts_bridge.js
 End-to-end smoke tests use the same models and configs as the app. CI runs all of them:
 
 ```bash
-scripts/download_kokoro.sh                     # stages Kokoro (~360 MB) into assets/tts/
-scripts/download_kokoro.sh --kitten            # stages Kitten nano (~25 MB) into assets/tts_kitten/
+scripts/download_tts_model.sh        # stages Kokoro (~360 MB) into assets/tts/
+scripts/download_tts_model.sh kitten # stages Kitten nano (~25 MB) into assets/tts_kitten/
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r scripts/requirements.txt
 python scripts/smoke_tts.py --out native-smoke.wav
@@ -60,7 +60,7 @@ python3 -m http.server 8099 -d build/web-preview   # build/web needs an http ori
 | which screen/tabs exist per platform | `lib/screens/home_screen.dart` (conditional import), `home_screen_web.dart`, `home_screen_io.dart` |
 | which engine is used | `lib/tts/tts_engine_impl.dart` (conditional import) |
 | which models exist, their files, archives, pins and voices | `lib/tts/tts_models.dart` (single source; mirrored by `scripts/smoke_tts.py`) |
-| native model files | `lib/tts/model_store.dart` (download + extract), `lib/tts/tts_engine_mobile.dart` (where they live, which sherpa config), `scripts/download_kokoro.sh [--kitten]` (staging for the smoke test) |
+| native model files | `lib/tts/model_store.dart` (download + extract), `lib/tts/tts_engine_mobile.dart` (where they live, which sherpa config), `scripts/download_tts_model.sh [kokoro|kitten]` (staging for the smoke test) |
 | CI / release builds | `.github/workflows/ci.yml`, `.github/workflows/release.yml` |
 
 ## Platform split
@@ -146,7 +146,7 @@ Rules that are not obvious from reading the code:
   pushes a change to the engine when the picker moves — without that, the
   readiness check still asks about the *old* model.
 - **Bundling is opt-in** — declaring `assets: [assets/tts/]` (Kokoro, staged by
-  `scripts/download_kokoro.sh`) or `assets: [assets/tts_kitten/]` (Kitten,
+  `scripts/download_tts_model.sh`) or `assets: [assets/tts_kitten/]` (Kitten,
   `--kitten`) in `pubspec.yaml` makes the app import that copy and never
   download; leave either out of `pubspec.yaml` or a web build picks up hundreds
   of MB of model files. The same staged files are what the smoke tests load.
@@ -323,12 +323,11 @@ Then reference it from the PR ("Not in this PR: #NN") so the two stay connected.
 
 ## Open work (Oct 2026)
 
-- #8 Verify Android, iOS and macOS builds on real toolchains (macOS CI job, iOS
-  minimum version for `sherpa_onnx_ios`).
-- #11 Store signing for release builds (secrets required).
+- #11 iOS/macOS release signing: Android now takes an upload key from
+  `android/key.properties` or `ANDROID_*` env vars; Apple certificates,
+  provisioning profiles and notarization still need an account.
 - #23 TTS settings are **not persisted** — voice, speed, model and backend reset
   on every restart. Worth a `shared_preferences` pass.
-- #24 `scripts/download_kokoro.sh` stages Kitten too now; rename it.
 - #25 Evaluate the newer `kitten-nano-en-v0_8` (and micro/mini) checkpoints.
 - #27 `_playGenerated` waits on just_audio's state stream with no timeout, so a
   missing completion leaves the UI on "Playing".
@@ -338,9 +337,9 @@ Then reference it from the PR ("Not in this PR: #NN") so the two stay connected.
 - #31 Kokoro `multi-lang-v1_1` (103 speakers) needs a decision first: web and
   native deliberately share voice ids, so the two lists would have to diverge or
   move together.
-- #32 Third-party notices now live in `THIRD_PARTY_NOTICES.md`, but the app has
-  no `LICENSE` of its own and k2-fsa has not been asked about the linked
-  espeak-ng (GPL-3.0).
+- #32 Third-party notices live in `THIRD_PARTY_NOTICES.md` and the GPLv3 /
+  Apache-2.0 texts in `LICENSES/`; the app still has no `LICENSE` of its own,
+  and k2-fsa has not answered the linked espeak-ng (GPL-3.0) question.
 - #33 Survey of VoiceStudio / Chatterbox / kokoro-web / IndexTTS; its actionable
   items are #29–#32.
 - #36 The web smoke test's `sharp` carried three high advisories (fixed by PR
