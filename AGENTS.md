@@ -323,8 +323,6 @@ Then reference it from the PR ("Not in this PR: #NN") so the two stay connected.
 
 ## Open work (Oct 2026)
 
-- #8 Verify Android, iOS and macOS builds on real toolchains (macOS CI job, iOS
-  minimum version for `sherpa_onnx_ios`).
 - #11 iOS/macOS release signing: Android now takes an upload key from
   `android/key.properties` or `ANDROID_*` env vars; Apple certificates,
   provisioning profiles and notarization still need an account.
