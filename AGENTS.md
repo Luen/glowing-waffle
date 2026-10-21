@@ -82,6 +82,16 @@ than `extends` it, so **adding a method to `TtsEngine` breaks the build until
 hook, add it to the applied-on-Play list in `app.dart` and to the fake engine in
 `test/widget_test.dart`.
 
+**Native playback renders one chunk ahead and remembers it.** The text is split
+with `splitIntoChunks` (300-char groups); `synthesizeAndPlay` starts rendering
+chunk *N+1* while chunk *N* plays, and every rendered chunk is kept in
+`ChunkAudioCache` (`lib/tts/chunk_cache.dart`), keyed by text + model + voice +
+speed. Play again and Save WAV on unchanged text reuse that audio instead of
+synthesizing it again; changing the text or any of those settings drops it.
+The cache keeps at most five minutes of audio so a long article cannot pin
+hundreds of MB (#62, #30). The web bridge still renders chunk by chunk with no
+look-ahead and no cache.
+
 ## The web bridge
 
 `web/tts_bridge.js` exposes `window.glowingWaffleTts` and is called from Dart

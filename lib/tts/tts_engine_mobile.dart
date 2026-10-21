@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../state/tts_app_state.dart';
 import 'backup_exclusion.dart';
+import 'chunk_cache.dart';
 import 'model_progress.dart';
 import 'model_store.dart';
 import 'text_chunker.dart';
@@ -53,6 +54,9 @@ class TtsEngineMobile implements TtsEngine {
 
   /// Playback speed multiplier for subsequent synthesis.
   double _speed = 1.0;
+
+  /// Audio already rendered for the current text (issue #62).
+  final ChunkAudioCache _cache = ChunkAudioCache();
 
   static const String _espeakZip = 'espeak-ng-data.zip';
 
@@ -161,6 +165,31 @@ class TtsEngineMobile implements TtsEngine {
     return worker;
   }
 
+  /// Points the cache at [text] for the current model/voice/speed, dropping
+  /// audio that was rendered with other settings.
+  void _syncCache(String text, int chunks) => _cache.prepare(
+        text,
+        chunks,
+        model: _model,
+        sid: _sid,
+        speed: _speed,
+      );
+
+  /// Renders [text] at [index] and remembers it for a replay or an export.
+  Future<WorkerAudio> _renderChunk(
+    TtsWorker worker,
+    String text,
+    int index,
+  ) async {
+    final audio = await worker.generate(text: text, sid: _sid, speed: _speed);
+    _cache.store(index, audio.samples, audio.sampleRate);
+    return audio;
+  }
+
+  /// The audio cached for chunk [index], with the rate it was rendered at.
+  WorkerAudio _cachedAudio(int index) =>
+      WorkerAudio(_cache[index]!, _cache.sampleRate);
+
   Future<void> _playGenerated(WorkerAudio audio) async {
     final wavPath = await _writeWav(audio.samples, audio.sampleRate);
     try {
@@ -171,9 +200,9 @@ class TtsEngineMobile implements TtsEngine {
       // was pressed (#27). Give the clip its own length plus a margin, then
       // treat it as finished.
       final length = Duration(
-        microseconds:
-            audio.samples.length * Duration.microsecondsPerSecond ~/
-                audio.sampleRate,
+        microseconds: audio.samples.length *
+            Duration.microsecondsPerSecond ~/
+            audio.sampleRate,
       );
       try {
         await _player.processingStateStream
@@ -208,14 +237,32 @@ class TtsEngineMobile implements TtsEngine {
     return path;
   }
 
-  /// Renders [text] with sherpa-onnx without playing it. The whole text goes
-  /// through one `generate` call, so a saved document is a single file.
+  /// Renders [text] with sherpa-onnx without playing it.
+  ///
+  /// Uses the same sentence chunks as playback, and reuses any chunk that has
+  /// already been rendered, so pressing Save after Play does not synthesize
+  /// the text a second time (issue #62). The chunks are joined into one buffer
+  /// with a short pause between them.
   @override
   Future<RenderedAudio> renderSamples(String text) async {
     if (text.trim().isEmpty) return RenderedAudio(Float32List(0));
+    final chunks = splitIntoChunks(text);
+    if (chunks.isEmpty) return RenderedAudio(Float32List(0));
     final worker = await _readyWorker();
-    final audio = await worker.generate(text: text, sid: _sid, speed: _speed);
-    return RenderedAudio(audio.samples, sampleRate: audio.sampleRate);
+    _syncCache(text, chunks.length);
+
+    final parts = <Float32List>[];
+    for (var i = 0; i < chunks.length; i++) {
+      final cached = _cache[i];
+      final samples =
+          cached ?? (await _renderChunk(worker, chunks[i], i)).samples;
+      if (samples.isNotEmpty) parts.add(samples);
+    }
+    final sampleRate = _cache.sampleRate;
+    return RenderedAudio(
+      joinChunks(parts, sampleRate: sampleRate),
+      sampleRate: sampleRate,
+    );
   }
 
   /// Invalidates an in-flight [synthesizeAndPlay] loop when it changes.
@@ -234,12 +281,35 @@ class TtsEngineMobile implements TtsEngine {
     if (chunks.isEmpty) return;
     final runId = ++_runId;
     final worker = await _readyWorker();
-    for (final chunk in chunks) {
-      if (runId != _runId) return;
-      final audio =
-          await worker.generate(text: chunk, sid: _sid, speed: _speed);
-      if (runId != _runId) return;
-      await _playGenerated(audio);
+    _syncCache(text, chunks.length);
+
+    // Render the next chunk while the current one plays, so sentences follow
+    // each other without a synthesis pause (issue #62). Chunks that are
+    // already cached are not rendered again.
+    Future<WorkerAudio>? ahead;
+    var aheadIndex = -1;
+    try {
+      for (var i = 0; i < chunks.length; i++) {
+        if (runId != _runId) return;
+        var audio = _cache[i] == null ? null : _cachedAudio(i);
+        if (audio == null && aheadIndex == i) {
+          audio = await ahead;
+          ahead = null;
+          aheadIndex = -1;
+        }
+        final current = audio ?? await _renderChunk(worker, chunks[i], i);
+        if (runId != _runId) return;
+        final next = _cache.firstMissing(i + 1);
+        if (next >= 0) {
+          aheadIndex = next;
+          ahead = _renderChunk(worker, chunks[next], next);
+        }
+        await _playGenerated(current);
+      }
+    } finally {
+      // A stopped run can leave a render in flight; its result is cached but
+      // its error has nobody left to report to.
+      ahead?.ignore();
     }
   }
 
