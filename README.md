@@ -15,8 +15,8 @@ the system share sheet on Android and iOS. See [Saving audio](#saving-audio).
 
 ## Saving audio
 
-**Save WAV** next to Play renders the current text with the selected voice and
-speed again — it does not record playback — and writes one file:
+**Save WAV** next to Play writes the current text (or the Web Reader page) to
+one file:
 
 - **Web**: the bytes become a Blob and the browser downloads them
   (`downloadWav()` in `web/tts_bridge.js`).
@@ -29,10 +29,12 @@ speed again — it does not record playback — and writes one file:
   manager or USB transfer shows (issue #17). The share sheet keeps the choice
   with the user: Files, Drive, a chat, a mounted drive…
 
-Multi-sentence input and whole Web Reader pages become a single WAV: the web
-bridge renders its sentence chunks and joins them with a short pause, and the
-native engine renders the whole text in one call. Nothing is written until Save
-is pressed, and the confirmation names the file and where it went.
+Multi-sentence input and whole Web Reader pages become a single WAV: both
+platforms render sentence chunks and join them with a short pause. Native builds
+reuse the chunks playback already rendered and only synthesize what was not
+played yet, so the file matches what you heard; web renders the text again
+(#64). Nothing is written until Save is pressed, and the confirmation names the
+file and where it went.
 
 ## Setup
 
