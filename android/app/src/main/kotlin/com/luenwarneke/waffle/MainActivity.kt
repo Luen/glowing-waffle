@@ -1,4 +1,4 @@
-package dev.luen.glowingwaffle
+package com.luenwarneke.waffle
 
 import io.flutter.embedding.android.FlutterActivity
 

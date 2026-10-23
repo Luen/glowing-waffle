@@ -8,7 +8,7 @@
 PRODUCT_NAME = Waffle
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = dev.luen.glowingwaffle
+PRODUCT_BUNDLE_IDENTIFIER = com.luenwarneke.waffle
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 Luen. All rights reserved.

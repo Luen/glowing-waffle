@@ -20,10 +20,23 @@ does with your text, and it keeps the codename's waffle.
 | Wordmark | lowercase **waffle**, only in the logo lockup |
 | Prose and UI | "Waffle", capitalised |
 | Tagline | *Reads aloud. Stays on your device.* |
-| Repository, Dart package, bundle id | unchanged: `glowing-waffle`, `glowing_waffle`, `dev.luen.glowingwaffle` |
+| App id (Android `applicationId`, Apple bundle id, Linux GTK id) | `com.luenwarneke.waffle`, from `waffle.luenwarneke.com` |
+| Repository, Dart package | unchanged codename: `glowing-waffle`, `glowing_waffle` |
 
-The bundle id **must stay `dev.luen.glowingwaffle`**: changing it installs a
-second app and abandons the downloaded model (#41). The name lives in:
+The app id is **permanent once the app is published**: a store listing can
+never change it, and on a device a different id is a different app, with its own
+settings and its own copy of the downloaded model (#41). It replaced the
+pre-release `dev.luen.glowingwaffle` before any store release; a build with
+the old id installs alongside this one rather than updating it. It lives in:
+
+| Platform | File |
+| --- | --- |
+| Android | `applicationId` and `namespace` in `android/app/build.gradle.kts`; `MainActivity` sits in the matching `kotlin/com/luenwarneke/waffle/` |
+| iOS | `PRODUCT_BUNDLE_IDENTIFIER` in `ios/Runner.xcodeproj/project.pbxproj` (app and `.RunnerTests`) |
+| macOS | `PRODUCT_BUNDLE_IDENTIFIER` in `macos/Runner/Configs/AppInfo.xcconfig`, plus `.RunnerTests` in `macos/Runner.xcodeproj/project.pbxproj` |
+| Linux, Windows | `--org com.luenwarneke` in `.github/workflows/release.yml`, which also pins Linux's `APPLICATION_ID` (#69) |
+
+The display name lives in:
 
 | Platform | File |
 | --- | --- |

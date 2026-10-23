@@ -6,8 +6,8 @@
 
 **Reads aloud. Stays on your device.** Waffle is a client-side TTS app: it reads
 text and websites aloud using **Kokoro 82M** or the small **KittenTTS nano**, fully
-on device, with no server and no account. (The repository and bundle id keep the
-original codename, *glowing-waffle* / `dev.luen.glowingwaffle`.)
+on device, with no server and no account. (The repository keeps the original
+codename, *glowing-waffle*; the app id is `com.luenwarneke.waffle`.)
 
 <p align="center">
   <img src="docs/branding/screenshots/web-phone-light.png" alt="Waffle on a phone, light theme" width="260">
