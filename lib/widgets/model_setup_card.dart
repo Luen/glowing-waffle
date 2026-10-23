@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/tts_providers.dart';
 import '../state/tts_app_state.dart';
 import '../tts/model_progress.dart';
+import 'content_width.dart';
 
 /// First-run setup card shown while the selected voice model is not installed.
 ///
@@ -24,59 +25,75 @@ class ModelSetupCard extends ConsumerWidget {
     final downloading = state.status == AppStatus.loadingModel;
     final model = state.model;
 
-    return Card(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.cloud_download_outlined),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Voice model needed',
-                    style: Theme.of(context).textTheme.titleMedium,
+    final scheme = Theme.of(context).colorScheme;
+
+    return ContentWidth(
+      child: Card(
+        margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+        color: scheme.primaryContainer,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.cloud_download_outlined,
+                    color: scheme.onPrimaryContainer,
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'The ${model.label} voice model (${model.size}, one time) is '
-              'downloaded and kept on this device. That keeps the app itself '
-              'small.',
-            ),
-            const SizedBox(height: 12),
-            ValueListenableBuilder<double?>(
-              valueListenable: modelDownloadProgress,
-              builder: (context, progress, _) {
-                if (!downloading) return const SizedBox.shrink();
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    LinearProgressIndicator(value: progress),
-                    const SizedBox(height: 4),
-                    Text(
-                      _progressLabel(progress),
-                      style: Theme.of(context).textTheme.bodySmall,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Voice model needed',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: scheme.onPrimaryContainer,
+                            fontWeight: FontWeight.w700,
+                          ),
                     ),
-                    const SizedBox(height: 8),
-                  ],
-                );
-              },
-            ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.icon(
-                onPressed: downloading ? null : onDownload,
-                icon: const Icon(Icons.download),
-                label: Text(downloading ? 'Downloading…' : 'Download model'),
+                  ),
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                'The ${model.label} voice model (${model.size}, one time) is '
+                'downloaded and kept on this device. That keeps the app itself '
+                'small.',
+                style: TextStyle(color: scheme.onPrimaryContainer),
+              ),
+              const SizedBox(height: 12),
+              ValueListenableBuilder<double?>(
+                valueListenable: modelDownloadProgress,
+                builder: (context, progress, _) {
+                  if (!downloading) return const SizedBox.shrink();
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      LinearProgressIndicator(value: progress),
+                      const SizedBox(height: 4),
+                      Text(
+                        _progressLabel(progress),
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: scheme.onPrimaryContainer),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  );
+                },
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.icon(
+                  onPressed: downloading ? null : onDownload,
+                  icon: const Icon(Icons.download),
+                  label: Text(downloading ? 'Downloading…' : 'Download model'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

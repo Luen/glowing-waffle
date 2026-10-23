@@ -1,6 +1,19 @@
-# Glowing Waffle – Read aloud
+<p align="center">
+  <img src="docs/branding/readme-header.png" alt="Waffle: reads aloud, stays on your device" width="100%">
+</p>
 
-Client-side TTS app: read aloud text and websites using **Kokoro 82M** or the small **KittenTTS nano**. Runs fully on device; no server required.
+# Waffle
+
+**Reads aloud. Stays on your device.** Waffle is a client-side TTS app: it reads
+text and websites aloud using **Kokoro 82M** or the small **KittenTTS nano**, fully
+on device, with no server and no account. (The repository keeps the original
+codename, *glowing-waffle*; the app id is `com.luenwarneke.waffle`.)
+
+<p align="center">
+  <img src="docs/branding/screenshots/web-phone-light.png" alt="Waffle on a phone, light theme" width="260">
+  &nbsp;
+  <img src="docs/branding/screenshots/web-phone-dark.png" alt="Waffle on a phone, dark theme" width="260">
+</p>
 
 > Kitten is native-only (Android/iOS/macOS). The web engine keeps speaking with Kokoro through kokoro-js, where the model picker is hidden rather than faked.
 
@@ -200,5 +213,11 @@ are permissively licensed (Apache-2.0/MIT) with one exception: sherpa-onnx
 compiles **espeak-ng (GPL-3.0-or-later)** into the native library every native
 build ships, so native builds contain GPL-3.0 code (open question and tracking
 in #32). The licence texts themselves are in [`LICENSES/`](LICENSES/): GPLv3 for
-espeak-ng and Apache-2.0 for sherpa-onnx and the models. Glowing Waffle's own
-licence is not decided yet.
+espeak-ng and Apache-2.0 for sherpa-onnx and the models. Waffle's own licence is
+not decided yet.
+
+## Branding
+
+Name, icon, palette, splash screens and store artwork are described in
+[`docs/branding.md`](docs/branding.md); every icon size is generated from one
+script, `scripts/branding/export.mjs`.

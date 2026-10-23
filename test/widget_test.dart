@@ -167,7 +167,7 @@ void main() {
   testWidgets('reads entered text with the engine', (tester) async {
     final engine = FakeEngine();
     await pumpApp(tester, engine);
-    expect(find.text('Read aloud'), findsOneWidget);
+    expect(find.text('Waffle'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField).first, 'Hello world');
     await tapPlay(tester);

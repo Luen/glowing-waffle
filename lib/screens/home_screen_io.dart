@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../widgets/app_title.dart';
 import '../widgets/model_setup_card.dart';
 import 'text_tab.dart';
 import 'web_reader_tab.dart';
@@ -48,7 +49,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Read aloud'),
+        title: const AppTitle(),
         bottom: TabBar(
           controller: _tabController,
           tabs: const [

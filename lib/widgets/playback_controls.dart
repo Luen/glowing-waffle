@@ -36,112 +36,116 @@ class PlaybackControls extends ConsumerWidget {
     final voices = state.model.voices;
     final selectedVoice =
         voices.contains(state.voice) ? state.voice : voices.first;
+    final accent = Theme.of(context).colorScheme.primary;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (showModelPicker)
+    // The controls sit on a card in the Text tab, where underlines are noise.
+    return DropdownButtonHideUnderline(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (showModelPicker)
+            Row(
+              children: [
+                Icon(Icons.graphic_eq, size: 20, color: accent),
+                const SizedBox(width: 12),
+                const Tooltip(
+                  message: 'Kitten is the small model (~25 MB), '
+                      'Kokoro the original 82M one (~350 MB).',
+                  child: Text('Model'),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: DropdownButton<TtsModel>(
+                    value: state.model,
+                    isExpanded: true,
+                    items: [
+                      for (final model in TtsModel.values)
+                        DropdownMenuItem<TtsModel>(
+                          value: model,
+                          child: Text('${model.label} (${model.size})'),
+                        ),
+                    ],
+                    onChanged: (model) {
+                      if (model != null) notifier.setModel(model);
+                    },
+                  ),
+                ),
+              ],
+            ),
           Row(
             children: [
-              const Icon(Icons.graphic_eq, size: 20),
+              Icon(Icons.record_voice_over, size: 20, color: accent),
               const SizedBox(width: 12),
-              const Tooltip(
-                message: 'Kitten is the small model (~25 MB), '
-                    'Kokoro the original 82M one (~350 MB).',
-                child: Text('Model'),
-              ),
+              const Text('Voice'),
               const SizedBox(width: 12),
               Expanded(
-                child: DropdownButton<TtsModel>(
-                  value: state.model,
+                child: DropdownButton<String>(
+                  value: selectedVoice,
                   isExpanded: true,
                   items: [
-                    for (final model in TtsModel.values)
-                      DropdownMenuItem<TtsModel>(
-                        value: model,
-                        child: Text('${model.label} (${model.size})'),
+                    for (final voice in voices)
+                      DropdownMenuItem<String>(
+                        value: voice,
+                        child: Text(voice),
                       ),
                   ],
-                  onChanged: (model) {
-                    if (model != null) notifier.setModel(model);
+                  onChanged: (voice) {
+                    if (voice != null) notifier.setVoice(voice);
                   },
                 ),
               ),
             ],
           ),
-        Row(
-          children: [
-            const Icon(Icons.record_voice_over, size: 20),
-            const SizedBox(width: 12),
-            const Text('Voice'),
-            const SizedBox(width: 12),
-            Expanded(
-              child: DropdownButton<String>(
-                value: selectedVoice,
-                isExpanded: true,
-                items: [
-                  for (final voice in voices)
-                    DropdownMenuItem<String>(
-                      value: voice,
-                      child: Text(voice),
-                    ),
-                ],
-                onChanged: (voice) {
-                  if (voice != null) notifier.setVoice(voice);
-                },
-              ),
-            ),
-          ],
-        ),
-        Row(
-          children: [
-            const Icon(Icons.speed, size: 20),
-            const SizedBox(width: 12),
-            SizedBox(
-              width: 48,
-              child: Text('${state.speed.toStringAsFixed(2)}x'),
-            ),
-            Expanded(
-              child: Slider(
-                value: state.speed.clamp(kMinSpeed, kMaxSpeed),
-                min: kMinSpeed,
-                max: kMaxSpeed,
-                divisions: 15,
-                label: '${state.speed.toStringAsFixed(2)}x',
-                onChanged: notifier.setSpeed,
-              ),
-            ),
-          ],
-        ),
-        if (showBackend)
           Row(
             children: [
-              const Icon(Icons.memory, size: 20),
+              Icon(Icons.speed, size: 20, color: accent),
               const SizedBox(width: 12),
-              const Tooltip(
-                message: 'Choose CPU if playback sounds garbled.',
-                child: Text('Acceleration'),
+              SizedBox(
+                width: 48,
+                child: Text('${state.speed.toStringAsFixed(2)}x'),
               ),
-              const SizedBox(width: 12),
               Expanded(
-                child: DropdownButton<TtsBackend>(
-                  value: state.backend,
-                  isExpanded: true,
-                  items: [
-                    for (final backend in TtsBackend.values)
-                      DropdownMenuItem<TtsBackend>(
-                        value: backend,
-                        child: Text(backend.label),
-                      ),
-                  ],
-                  onChanged: (backend) {
-                    if (backend != null) notifier.setBackend(backend);
-                  },
+                child: Slider(
+                  value: state.speed.clamp(kMinSpeed, kMaxSpeed),
+                  min: kMinSpeed,
+                  max: kMaxSpeed,
+                  divisions: 15,
+                  label: '${state.speed.toStringAsFixed(2)}x',
+                  onChanged: notifier.setSpeed,
                 ),
               ),
             ],
           ),
-      ],
+          if (showBackend)
+            Row(
+              children: [
+                Icon(Icons.memory, size: 20, color: accent),
+                const SizedBox(width: 12),
+                const Tooltip(
+                  message: 'Choose CPU if playback sounds garbled.',
+                  child: Text('Acceleration'),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: DropdownButton<TtsBackend>(
+                    value: state.backend,
+                    isExpanded: true,
+                    items: [
+                      for (final backend in TtsBackend.values)
+                        DropdownMenuItem<TtsBackend>(
+                          value: backend,
+                          child: Text(backend.label),
+                        ),
+                    ],
+                    onChanged: (backend) {
+                      if (backend != null) notifier.setBackend(backend);
+                    },
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
     );
   }
 }
