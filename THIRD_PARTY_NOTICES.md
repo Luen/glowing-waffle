@@ -49,6 +49,13 @@ plain Apache-2.0 `LICENSE` and no `NOTICE` that mentions espeak-ng (checked
 2026-10-20). Until they answer, treat every native build as containing
 GPL-3.0-or-later code. Tracked in #32.
 
+## Artwork
+
+| Component | Where | Licence |
+| --- | --- | --- |
+| [Inter / Inter Display](https://rsms.me/inter/) glyph outlines | the wordmark and the store/social artwork in `docs/branding/`, converted to paths by `scripts/branding/export.mjs`. No font file is shipped; the app uses the platform font | SIL Open Font License 1.1 |
+| [`opentype.js`](https://github.com/opentypejs/opentype.js), [`playwright-core`](https://github.com/microsoft/playwright) | `scripts/branding/` only, to generate the artwork; not shipped | MIT, Apache-2.0 |
+
 ## Adding a dependency
 
 When a new model, native library or bundled asset is added, add a row above.

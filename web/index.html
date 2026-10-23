@@ -4,13 +4,29 @@
   <base href="$FLUTTER_BASE_HREF">
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="Client-side TTS - read aloud text and websites.">
+  <meta name="description" content="Reads aloud, entirely on your device. Text-to-speech with Kokoro 82M; no server, no account.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#FFF8EF" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#15111D" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="Read aloud">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
-  <title>Read aloud</title>
+  <meta name="apple-mobile-web-app-title" content="Waffle">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
+  <title>Waffle</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    /* Splash until Flutter paints: the icon on the brand surface colour. The
+       Flutter view is opaque, so it covers this once the first frame is up. */
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: #FFF8EF url("icons/Icon-192.png") no-repeat center / 96px 96px;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { background-color: #15111D; }
+    }
+  </style>
   <!-- Bump ?v when tts_bridge.js changes: it is a non-hashed asset, so browsers
        may otherwise keep serving a stale copy from cache. -->
   <script type="module" src="tts_bridge.js?v=5"></script>

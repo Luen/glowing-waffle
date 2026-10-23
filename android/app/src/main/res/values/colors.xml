@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Waffle palette (docs/branding.md, lib/theme/brand_theme.dart). -->
+<resources>
+    <color name="brand_night_raised">#2B2340</color>
+    <color name="brand_night_deep">#15111D</color>
+    <color name="brand_cream">#FFF8EF</color>
+    <!-- Behind the splash icon and the Flutter UI until its first frame. -->
+    <color name="splash_background">@color/brand_cream</color>
+</resources>

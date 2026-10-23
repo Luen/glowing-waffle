@@ -79,3 +79,4 @@ scripts/web_smoke/node_modules/
 # Python bytecode from scripts/ (py_compile, local runs)
 __pycache__/
 *.pyc
+scripts/branding/node_modules/

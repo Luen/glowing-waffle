@@ -179,7 +179,7 @@ jobs:
       - name: Collect
         run: |
           mkdir -p dist
-          ditto -c -k --keepParent "build/macos/Build/Products/Release/glowing_waffle.app" dist/glowing-waffle-macos-unsigned.zip
+          ditto -c -k --keepParent "build/macos/Build/Products/Release/Waffle.app" dist/glowing-waffle-macos-unsigned.zip
           mkdir -p Payload && cp -R build/ios/iphoneos/Runner.app Payload/
           zip -qr dist/glowing-waffle-ios-unsigned.ipa Payload
           ls -lh dist

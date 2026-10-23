@@ -4,11 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'screens/home_screen.dart';
 import 'providers/tts_providers.dart';
 import 'state/tts_app_state.dart';
+import 'theme/brand_theme.dart';
 import 'tts/audio_saver.dart';
 import 'tts/tts_engine.dart';
 import 'tts/tts_engine_impl.dart';
 import 'tts/tts_models.dart';
 import 'tts/wav.dart';
+import 'widgets/app_title.dart';
 
 class GlowingWaffleApp extends ConsumerStatefulWidget {
   const GlowingWaffleApp({super.key, this.engine, this.audioSaver});
@@ -145,12 +147,10 @@ class _GlowingWaffleAppState extends ConsumerState<GlowingWaffleApp> {
     ref.listen(ttsStateProvider.select((state) => state.model),
         (_, model) => _applyModel(model));
     return MaterialApp(
-      title: 'Read aloud',
+      title: AppTitle.name,
       scaffoldMessengerKey: _messengerKey,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
+      theme: buildBrandTheme(Brightness.light),
+      darkTheme: buildBrandTheme(Brightness.dark),
       home: HomeScreen(
         onPlay: _handlePlay,
         onStop: _handleStop,

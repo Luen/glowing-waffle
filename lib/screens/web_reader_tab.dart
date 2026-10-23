@@ -170,7 +170,6 @@ class _WebReaderTabState extends ConsumerState<WebReaderTab> {
                   controller: _urlController,
                   decoration: const InputDecoration(
                     labelText: 'URL',
-                    border: OutlineInputBorder(),
                     hintText: 'https://example.com',
                   ),
                   onSubmitted: (_) => _loadUrl(),
