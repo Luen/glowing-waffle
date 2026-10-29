@@ -66,6 +66,35 @@ def build_model_config(engine: str, assets: pathlib.Path, data_dir: str):
     )
 
 
+def _safe_extract_zip(zip_path: pathlib.Path, dest: pathlib.Path) -> None:
+    """Extract [zip_path] into [dest], refusing path-traversal members (CWE-22).
+
+    ZipFile.extractall / extract write member names as-is, so a crafted
+    archive can escape dest via ``..`` or absolute paths. Validate each
+    member, then copy bytes ourselves (no extract*) so nothing leaves dest
+    (Snyk python/TarSlip, #75).
+    """
+    dest = dest.resolve()
+    with zipfile.ZipFile(zip_path) as zf:
+        for info in zf.infolist():
+            member = pathlib.PurePosixPath(info.filename)
+            if member.is_absolute() or ".." in member.parts:
+                raise ValueError(f"refusing unsafe zip member: {info.filename!r}")
+            target = (dest / pathlib.Path(*member.parts)).resolve()
+            try:
+                target.relative_to(dest)
+            except ValueError as exc:
+                raise ValueError(
+                    f"refusing unsafe zip member: {info.filename!r}"
+                ) from exc
+            if info.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(info) as src, target.open("wb") as out:
+                out.write(src.read())
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("text", nargs="?", default="Hello from Glowing Waffle. This audio was generated on the CPU.")
@@ -85,7 +114,7 @@ def main() -> int:
         return 2
 
     with tempfile.TemporaryDirectory() as tmp:
-        zipfile.ZipFile(assets / "espeak-ng-data.zip").extractall(tmp)
+        _safe_extract_zip(assets / "espeak-ng-data.zip", pathlib.Path(tmp))
         config = sherpa_onnx.OfflineTtsConfig(
             model=build_model_config(args.engine, assets, f"{tmp}/espeak-ng-data")
         )
