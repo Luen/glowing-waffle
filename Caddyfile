@@ -1,0 +1,15 @@
+:80 {
+	root * /srv
+	encode zstd gzip
+	try_files {path} /index.html
+	file_server
+
+	# Never cache the entrypoint or the service worker: they decide when the
+	# next version is picked up.
+	@noCache path / /index.html /flutter_service_worker.js /manifest.json /version.json
+	header @noCache Cache-Control "no-cache, no-store, must-revalidate"
+
+	# Flutter's asset filenames are stable across builds, so keep this short.
+	@shortCache path /assets/* /canvaskit/*
+	header @shortCache Cache-Control "public, max-age=3600"
+}
