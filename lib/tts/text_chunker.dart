@@ -24,9 +24,8 @@ List<String> splitIntoChunks(String text, {int maxChars = kMaxChunkChars}) {
 
   // Same pattern as tts_bridge.js: a run of non-terminators followed by one or
   // more terminators and whitespace/end, or a trailing run with none.
-  final matches = RegExp(r'[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$')
-      .allMatches(normalized)
-      .toList();
+  final matches =
+      RegExp(r'[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$').allMatches(normalized).toList();
   final sentences = matches.isEmpty
       ? <String>[normalized]
       : [for (final match in matches) match.group(0)!];
