@@ -11,6 +11,9 @@ For Dart/Flutter packages the rules match npm-check-updates `--target semver`:
 
 Versions published within COOLDOWN_DAYS are skipped so a hijacked release has
 time to be yanked before it reaches a homeserver image.
+
+`kokoro-js` is never bumped here: the web bridge CDN pin, smoke package, and
+AGENTS.md must move together in a deliberate change.
 """
 
 from __future__ import annotations
@@ -36,6 +39,10 @@ NODE_PACKAGES = (
     ROOT / "scripts" / "branding" / "package.json",
     ROOT / "scripts" / "web_smoke" / "package.json",
 )
+
+# Pinned in web/tts_bridge.js (CDN) and scripts/web_smoke; keep them in sync
+# by hand, not via the nightly job.
+NODE_REJECT = ("kokoro-js",)
 
 CARET_LINE = re.compile(
     r"^(\s*)([\w.]+):\s*(\^)([0-9][0-9A-Za-z.+-]*)\s*(#.*)?$"
@@ -166,10 +173,26 @@ def update_pubspec(
     return changed
 
 
+def _run(argv: list[str], cwd: Path) -> None:
+    """Run [argv] in [cwd]. Use a shell on Windows so *.cmd shims resolve."""
+    if sys.platform == "win32":
+        subprocess.run(
+            subprocess.list2cmdline(argv), cwd=cwd, check=True, shell=True
+        )
+    else:
+        subprocess.run(argv, cwd=cwd, check=True)
+
+
 def sync_lock(pubspec: Path, pub_cmd: list[str]) -> None:
     cwd = pubspec.parent
     print(f"  syncing lockfile in {cwd.relative_to(ROOT)} …")
-    subprocess.run([*pub_cmd, "get"], cwd=cwd, check=True)
+    _run([*pub_cmd, "get"], cwd)
+
+
+def sync_node_lock(package_json: Path) -> None:
+    cwd = package_json.parent
+    print(f"  syncing lockfile in {cwd.relative_to(ROOT)} …")
+    _run(["npm", "install"], cwd)
 
 
 def update_node_package(path: Path, cooldown_days: int, dry_run: bool) -> bool:
@@ -179,14 +202,24 @@ def update_node_package(path: Path, cooldown_days: int, dry_run: bool) -> bool:
     before = path.read_text(encoding="utf-8")
     # Without --upgrade, ncu only prints; with it, it rewrites package.json.
     # (There is no --dry-run flag on npm-check-updates@23.)
-    upgrade_flag = "--upgrade" if not dry_run else ""
-    cmd = (
-        f'npx --yes npm-check-updates@23.1.1 --target semver '
-        f'--cooldown {cooldown_days} {upgrade_flag} '
-        f'--packageFile "{path}"'
-    )
+    reject = ",".join(NODE_REJECT)
+    cmd = [
+        "npx",
+        "--yes",
+        "npm-check-updates@23.1.1",
+        "--target",
+        "semver",
+        "--cooldown",
+        str(cooldown_days),
+        "--reject",
+        reject,
+        "--packageFile",
+        str(path),
+    ]
+    if not dry_run:
+        cmd.append("--upgrade")
     try:
-        subprocess.run(cmd, cwd=ROOT, check=True, shell=True)
+        _run(cmd, ROOT)
     except subprocess.CalledProcessError as error:
         print(f"  warning: npm-check-updates failed ({error})", file=sys.stderr)
         return False
@@ -197,6 +230,7 @@ def update_node_package(path: Path, cooldown_days: int, dry_run: bool) -> bool:
         return False
     if changed:
         print("  package.json updated")
+        sync_node_lock(path)
     else:
         print("  unchanged")
     return changed

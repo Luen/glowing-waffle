@@ -4,7 +4,8 @@
 # release that stays inside each dependency's current major (0.x only takes
 # patches), skipping versions published in the last COOLDOWN_DAYS so a
 # hijacked release has time to be yanked. Constraint files are the intentional
-# edit; lockfiles are only re-resolved so CI can still `pub get`.
+# edit; lockfiles are re-resolved so CI can still `pub get` / `npm ci`.
+# `kokoro-js` is excluded (bridge CDN pin must move with the smoke package).
 #
 # Pushes straight to `main`. Tags and the GHCR web image stay manual
 # (publish a GitHub Release). No-op when nothing moved.
@@ -18,7 +19,7 @@ on:
 
 concurrency:
   group: nightly-minor-deps-${{ github.repository }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -32,7 +33,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout main
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
@@ -43,7 +44,7 @@ jobs:
           channel: stable
           cache: true
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
 
@@ -55,17 +56,21 @@ jobs:
         run: |
           set -euo pipefail
           if git diff --quiet -- \
-              pubspec.yaml \
+              pubspec.yaml pubspec.lock \
               scripts/branding/package.json \
-              scripts/web_smoke/package.json; then
+              scripts/branding/package-lock.json \
+              scripts/web_smoke/package.json \
+              scripts/web_smoke/package-lock.json; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "All dependency ranges already at the newest cooled in-major release."
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
             git diff -- \
-              pubspec.yaml \
+              pubspec.yaml pubspec.lock \
               scripts/branding/package.json \
-              scripts/web_smoke/package.json
+              scripts/branding/package-lock.json \
+              scripts/web_smoke/package.json \
+              scripts/web_smoke/package-lock.json
           fi
 
       - name: Analyze and test
@@ -75,7 +80,18 @@ jobs:
           dart format --output=none --set-exit-if-changed .
           flutter analyze
           flutter test
+          flutter build web
           node --check web/tts_bridge.js
+
+      - name: Branding npm ci
+        if: steps.changes.outputs.changed == 'true'
+        run: npm ci
+        working-directory: scripts/branding
+
+      - name: Web smoke npm ci
+        if: steps.changes.outputs.changed == 'true'
+        run: npm ci
+        working-directory: scripts/web_smoke
 
       - name: Commit and push to main
         if: steps.changes.outputs.changed == 'true'
@@ -86,7 +102,9 @@ jobs:
           git add \
             pubspec.yaml pubspec.lock \
             scripts/branding/package.json \
-            scripts/web_smoke/package.json
+            scripts/branding/package-lock.json \
+            scripts/web_smoke/package.json \
+            scripts/web_smoke/package-lock.json
           git commit -m "chore(deps): nightly in-major dependency update"
           # A PR may have landed on main while tests ran.
           git pull --rebase origin main
