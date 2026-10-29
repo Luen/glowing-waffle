@@ -39,12 +39,11 @@ Caddy adds an SPA fallback and sets:
 
 ## Published image
 
-The **Web image (GHCR)** workflow builds and smoke-tests the image, then
-pushes a multi-arch manifest when:
+The **Publish release image** workflow (`.github/workflows/release-publish.yml`)
+builds and smoke-tests the image, then pushes a multi-arch manifest when:
 
-- a GitHub Release is published, or
-- you run the workflow manually with **Push the multi-arch image to GHCR**
-  checked.
+- a GitHub Release is published (including the nightly deps release), or
+- you run the workflow manually with a release `tag` input.
 
 Tags:
 

@@ -265,15 +265,42 @@ header and PCM conversion; it does not cover audible quality.
   the real web screen (for example, that the web home screen shows a control).
 - Anything that touches `dart:js_interop` needs `flutter test --platform chrome`.
 
+## Branch model
+
+| Branch | Role |
+| --- | --- |
+| `dev` | Default branch for features and improvements |
+| `main` | Production. Releases and GHCR images land here |
+
+- Open feature/fix PRs against **`dev`**.
+- To release: merge **`dev` into `main`**, bump `pubspec.yaml` /
+  `lib/app_version.dart`, tag, and create a GitHub Release on `main`.
+  Publishing the Release triggers `.github/workflows/release-publish.yml`,
+  which builds and pushes the GHCR web image. A tag alone does **not**
+  publish an image.
+- Do not use `master`.
+- **Keep `dev` and `main` in sync.** The nightly dependency job commits to
+  `main`, so it back-merges into `dev` in the same run. Without that, `dev`
+  falls one commit further behind every night and the next release merge
+  conflicts on `pubspec.yaml` / lockfiles. To check:
+
+  ```bash
+  git fetch origin && git rev-list --count origin/dev..origin/main
+  ```
+
+  The merge step runs in a scratch worktree on purpose — checking `dev` out
+  in the primary tree would leave the job on the wrong branch for later steps.
+
 ## House rules
 
-- **One PR per issue**, always branched off `main`. Branch names:
-  `fix/…`, `feat/…`, `docs/…`, `chore/…`, `ci/…`.
+- **One PR per issue**, always branched off `dev`. Branch names:
+  `fix/…`, `feat/…`, `docs/…`, `chore/…`, `ci/…`. Never push directly to
+  `main` except via the promote / nightly paths.
 - **App version in the UI.** `kAppVersion` in
   [`lib/app_version.dart`](lib/app_version.dart) is shown next to the title in
   the app bar (web and native, so the Odroid site shows it too). Bump it
-  together with the version name in `pubspec.yaml` when you tag a release —
-  there is no release-please bump here.
+  together with the version name in `pubspec.yaml` when you tag a release
+  (the nightly job does this for dependency patches).
 - **Commit messages and PR bodies explain *why*, and are backed by evidence.**
   Match the existing history (`git log`): imperative subject, then the problem,
   then a `Verified:` block with the exact commands and observed results. Use
@@ -301,23 +328,33 @@ header and PCM conversion; it does not cover audible quality.
 
 ### Nightly minor dependency updates
 
-`.github/workflows/nightly-minor-deps.yml` runs daily (~00:27 AEST) on `main`.
-`scripts/update_minor_deps.py` raises caret ranges in `pubspec.yaml` and
-in-major npm ranges in `scripts/branding/package.json` and
-`scripts/web_smoke/package.json` to the newest cooled release
-(`npm-check-updates --target semver` rules: same major for 1.x+, same minor
-for 0.x). Versions published in the last **3 days** are skipped (`--cooldown`)
-so a hijacked release has time to be yanked. **`kokoro-js` is rejected** — the
-CDN pin in `web/tts_bridge.js` and the smoke package must move together by hand.
+`.github/workflows/nightly-minor-deps-release.yml` runs daily (~00:27 AEST)
+on **`main`**:
+
+1. `scripts/update_minor_deps.py` raises caret ranges in `pubspec.yaml` and
+   in-major npm ranges in `scripts/branding/package.json` /
+   `scripts/web_smoke/package.json` (`npm-check-updates --target semver`:
+   same major for 1.x+, same minor for 0.x). Versions published in the last
+   **3 days** are skipped (`--cooldown`) so a hijacked release has time to be
+   yanked. **`kokoro-js` is rejected** — bump it with the CDN pin by hand.
+2. When constraint files moved: analyze, test, `flutter build web`, and
+   `npm ci` in the script packages.
+3. Patch-bump `pubspec.yaml` + `kAppVersion`, commit to `main` (including
+   lockfiles), create a GitHub Release (which runs `release-publish.yml` for
+   GHCR `:latest`).
+4. Back-merge `main` → `dev` (fast-forward, else a merge commit in a scratch
+   worktree, else open a `chore/sync-main-to-dev` PR).
 
 Constraint files are the intentional edit. Lockfiles (`pubspec.lock`,
-`scripts/*/package-lock.json`) are re-resolved so CI can still `pub get` /
-`npm ci`. The job runs analyze, tests, `flutter build web`, and `npm ci` in
-the script packages, then pushes a `chore(deps):` commit straight to `main`
-when something changed. It does **not** cut a release tag — publish a GitHub
-Release as usual so GHCR `:latest` updates through the Web image workflow.
-Branch protection on `main` needs a bypass for Actions if pushes from
+`scripts/*/package-lock.json`) are re-resolved so CI can still install.
+Branch protection on `main` / `dev` needs a bypass for Actions if pushes from
 `GITHUB_TOKEN` are blocked.
+
+Two workflows push the web image, and they are the only ones that should:
+
+- `nightly-minor-deps-release.yml` — nightly in-range dependency bumps
+- `release-publish.yml` — on `release: published` (plus `workflow_dispatch`
+  with a `tag` input to re-publish an existing release)
 
 Manual dry run from the repo root:
 
