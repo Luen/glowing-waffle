@@ -106,6 +106,12 @@ file and where it went.
 
    Or build: `flutter build web` and serve `build/web`.
 
+   **Docker / home server:** `docker compose up --build` serves the release
+   web build on <http://localhost:8099>. The multi-arch image
+   `ghcr.io/luen/glowing-waffle-web` is published by the Web image workflow;
+   see [`docs/web-deployment.md`](docs/web-deployment.md) for Odroid and
+   Cloudflare tunnel notes (`waffle.luenwarneke.com` → `:8099`).
+
 2. **Android** (downloads the model on first run):
 
    ```bash
