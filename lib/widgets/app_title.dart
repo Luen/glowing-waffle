@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../app_version.dart';
 import '../theme/waffle_mark.dart';
 
-/// The app bar title: the mark and the app's name.
+/// The app bar title: the mark, the app's name, and the ship version.
 class AppTitle extends StatelessWidget {
   const AppTitle({super.key});
 
@@ -11,12 +12,20 @@ class AppTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
+    final theme = Theme.of(context);
+    return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        WaffleMark(size: 30),
-        SizedBox(width: 12),
+        const WaffleMark(size: 30),
+        const SizedBox(width: 12),
         Text(name),
+        const SizedBox(width: 8),
+        Text(
+          'v$kAppVersion',
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
       ],
     );
   }
