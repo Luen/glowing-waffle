@@ -1,0 +1,16 @@
+services:
+  web:
+    image: ghcr.io/luen/glowing-waffle-web:${WAFFLE_WEB_TAG:-latest}
+    build:
+      context: .
+    container_name: glowing-waffle-web
+    restart: unless-stopped
+    ports:
+      # Host 8099 matches the local preview port in AGENTS.md and is free on
+      # the Odroid home server; override with WAFFLE_WEB_PORT if needed.
+      - "${WAFFLE_WEB_PORT:-8099}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

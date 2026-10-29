@@ -1,0 +1,25 @@
+# Build outputs and local tool state
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+.venv/
+__pycache__/
+*.pyc
+
+# Not needed to build the web app
+android/
+ios/
+linux/
+macos/
+windows/
+test/
+docs/
+scripts/
+.github/
+.idea/
+.vscode/
+.git/
+assets/tts/
+assets/tts_kitten/
