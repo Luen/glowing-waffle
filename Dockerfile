@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Build the Flutter web bundle and serve it with Caddy.
-# The release workflow (web-image.yml) pushes a multi-arch image to GHCR;
+# The release workflow (release-publish.yml) pushes a multi-arch image to GHCR;
 # `docker compose up --build` builds it locally.
 #
 # Flutter's official Linux SDK is amd64-only, so the build stage is always

@@ -1,0 +1,162 @@
+# Nightly dependency refresh → patch release (main).
+#
+# Raises caret / in-major npm ranges after a publish cooldown, then when
+# constraint files moved: analyze/test, patch-bump pubspec + kAppVersion,
+# commit to main, back-merge into dev, and cut a GitHub Release (which
+# triggers release-publish.yml for the GHCR web image).
+#
+# Constraint files are the intentional edit; lockfiles are only re-resolved
+# so CI can still install.
+
+name: Nightly minor deps release
+
+on:
+  schedule:
+    - cron: '27 14 * * *' # ~00:27 AEST
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-minor-deps-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
+
+env:
+  COOLDOWN_DAYS: 3
+
+jobs:
+  update-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Raise in-major ranges (3-day cooldown)
+        run: python scripts/update_minor_deps.py --cooldown-days "${COOLDOWN_DAYS}"
+
+      - name: Detect constraint-file changes
+        id: changes
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- \
+              pubspec.yaml \
+              scripts/branding/package.json \
+              scripts/web_smoke/package.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "All dependency ranges already at the newest cooled in-major release."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff -- \
+              pubspec.yaml \
+              scripts/branding/package.json \
+              scripts/web_smoke/package.json
+          fi
+
+      - name: Analyze and test
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          flutter pub get
+          dart format --output=none --set-exit-if-changed .
+          flutter analyze
+          flutter test
+          node --check web/tts_bridge.js
+
+      - name: Bump patch version
+        if: steps.changes.outputs.changed == 'true'
+        id: version
+        run: |
+          set -euo pipefail
+          line="$(grep -E '^version:' pubspec.yaml | head -n1)"
+          raw="${line#version: }"
+          raw="$(echo "$raw" | tr -d '[:space:]')"
+          name="${raw%%+*}"
+          build="${raw##*+}"
+          if [[ "$build" == "$raw" ]]; then build=0; fi
+          IFS=. read -r maj min pat <<< "$name"
+          new_pat=$((pat + 1))
+          new_build=$((build + 1))
+          new_name="${maj}.${min}.${new_pat}"
+          new_full="${new_name}+${new_build}"
+          sed -i "s/^version: .*/version: ${new_full}/" pubspec.yaml
+          sed -i "s/const String kAppVersion = '[^']*'/const String kAppVersion = '${new_name}'/" lib/app_version.dart
+          echo "version=${new_name}" >> "$GITHUB_OUTPUT"
+          echo "Bumped to ${new_full} (kAppVersion ${new_name})"
+
+      - name: Commit dependency bump
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            pubspec.yaml pubspec.lock \
+            lib/app_version.dart \
+            scripts/branding/package.json \
+            scripts/web_smoke/package.json
+          # Lockfiles under scripts/ may appear after npm sync.
+          git add -u scripts/branding scripts/web_smoke || true
+          git commit -m "chore(deps): nightly in-major dependency update (${{ steps.version.outputs.version }})"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      # Keep dev level with main. Runs straight after the bump lands so a
+      # failure further down (release) cannot leave dev behind.
+      - name: Sync main back to dev
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git fetch origin main dev
+          if git merge-base --is-ancestor origin/dev origin/main; then
+            git push origin origin/main:refs/heads/dev
+            echo "dev fast-forwarded to main"
+            exit 0
+          fi
+          SYNC_DIR="$(mktemp -d)"
+          git worktree add --detach "$SYNC_DIR" origin/dev
+          if git -C "$SYNC_DIR" merge --no-edit \
+              -m "chore: merge main into dev (nightly deps)" origin/main; then
+            git -C "$SYNC_DIR" push origin HEAD:dev
+            echo "merged main into dev"
+          else
+            echo "::warning::Could not merge main into dev automatically; opening a PR instead"
+            git push -f origin origin/main:refs/heads/chore/sync-main-to-dev
+            gh pr create --base dev --head chore/sync-main-to-dev \
+              --title "chore: sync main into dev" \
+              --body "Automated back-merge of the nightly dependency release conflicted. Resolve manually so dev does not drift behind main." \
+              || echo "A sync PR is already open"
+          fi
+          git worktree remove --force "$SYNC_DIR"
+
+      - name: Create GitHub Release
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists"
+            exit 0
+          fi
+          gh release create "$TAG" --target main --title "$TAG" \
+            --notes "Nightly in-major dependency update (${TAG})."
