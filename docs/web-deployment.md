@@ -2,7 +2,9 @@
 
 The Flutter web build is a static site. The root `Dockerfile` builds it in a
 Flutter stage and serves it with Caddy. No host reverse proxy is required on
-the home server: run the container and point a Cloudflare tunnel at it.
+the home server: run the container and point a Cloudflare tunnel at it. The
+app bar shows `kAppVersion` so you can confirm which ship build is running
+behind the tunnel.
 
 ## Run locally
 
