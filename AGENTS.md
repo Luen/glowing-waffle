@@ -336,16 +336,19 @@ on **`main`**:
    `scripts/web_smoke/package.json` (`npm-check-updates --target semver`:
    same major for 1.x+, same minor for 0.x). Versions published in the last
    **3 days** are skipped (`--cooldown`) so a hijacked release has time to be
-   yanked.
-2. Analyze / test when constraint files moved.
-3. Patch-bump `pubspec.yaml` + `kAppVersion`, commit to `main`, create a
-   GitHub Release (which runs `release-publish.yml` for GHCR `:latest`).
+   yanked. **`kokoro-js` is rejected** — bump it with the CDN pin by hand.
+2. When constraint files moved: analyze, test, `flutter build web`, and
+   `npm ci` in the script packages.
+3. Patch-bump `pubspec.yaml` + `kAppVersion`, commit to `main` (including
+   lockfiles), create a GitHub Release (which runs `release-publish.yml` for
+   GHCR `:latest`).
 4. Back-merge `main` → `dev` (fast-forward, else a merge commit in a scratch
    worktree, else open a `chore/sync-main-to-dev` PR).
 
-Constraint files are the intentional edit. Lockfiles are only re-resolved so
-CI can still install. Branch protection on `main` / `dev` needs a bypass for
-Actions if pushes from `GITHUB_TOKEN` are blocked.
+Constraint files are the intentional edit. Lockfiles (`pubspec.lock`,
+`scripts/*/package-lock.json`) are re-resolved so CI can still install.
+Branch protection on `main` / `dev` needs a bypass for Actions if pushes from
+`GITHUB_TOKEN` are blocked.
 
 Two workflows push the web image, and they are the only ones that should:
 
