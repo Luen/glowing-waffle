@@ -339,9 +339,12 @@ on **`main`**:
    yanked. **`kokoro-js` is rejected** — bump it with the CDN pin by hand.
 2. When constraint files moved: analyze, test, `flutter build web`, and
    `npm ci` in the script packages.
-3. Patch-bump `pubspec.yaml` + `kAppVersion`, commit to `main` (including
-   lockfiles), create a GitHub Release (which runs `release-publish.yml` for
-   GHCR `:latest`).
+3. **Release only when a production dependency moved** (pubspec
+   `dependencies` / npm `dependencies`): patch-bump `pubspec.yaml` +
+   `kAppVersion`, commit to `main` (including lockfiles), create a GitHub
+   Release (which runs `release-publish.yml` for GHCR `:latest`). A
+   `dev_dependencies` / `devDependencies`-only update is still committed
+   after the suite, but does not bump or publish.
 4. Back-merge `main` → `dev` (fast-forward, else a merge commit in a scratch
    worktree, else open a `chore/sync-main-to-dev` PR).
 
