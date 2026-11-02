@@ -1,4 +1,9 @@
-# Nightly dependency refresh → patch release (main).
+# Nightly dependency refresh → optional patch release (main).
+#
+# Release only when a production dependency range moved
+# (pubspec `dependencies` / npm `dependencies`). A
+# `dev_dependencies` / `devDependencies`-only update is still
+# committed after analyze/test, but does not bump or publish.
 #
 # Raises caret / in-major npm ranges after a publish cooldown, then when
 # constraint files moved: analyze/test/build, patch-bump pubspec + kAppVersion,
@@ -47,7 +52,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: '26'
 
       - name: Raise in-major ranges (3-day cooldown)
         run: python scripts/update_minor_deps.py --cooldown-days "${COOLDOWN_DAYS}"
@@ -63,15 +68,76 @@ jobs:
               scripts/web_smoke/package.json \
               scripts/web_smoke/package-lock.json; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "release=false" >> "$GITHUB_OUTPUT"
             echo "All dependency ranges already at the newest cooled in-major release."
+            exit 0
+          fi
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          git diff -- \
+            pubspec.yaml pubspec.lock \
+            scripts/branding/package.json \
+            scripts/branding/package-lock.json \
+            scripts/web_smoke/package.json \
+            scripts/web_smoke/package-lock.json
+
+          CLASSIFY="$(python - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          try:
+              import yaml
+          except ImportError:
+              import sys
+              subprocess.check_call([sys.executable, "-m", "pip", "install", "pyyaml", "-q"])
+              import yaml
+
+          def show(path: str):
+              try:
+                  return subprocess.check_output(["git", "show", f"HEAD:{path}"], text=True)
+              except subprocess.CalledProcessError:
+                  return None
+
+          def same(a, b):
+              return json.dumps(a or {}, sort_keys=True) == json.dumps(b or {}, sort_keys=True)
+
+          prod_changed = False
+          den_changed = False
+
+          for path in ["pubspec.yaml"]:
+              before_raw, after_path = show(path), Path(path)
+              if not after_path.exists():
+                  continue
+              after = yaml.safe_load(after_path.read_text(encoding="utf-8")) or {}
+              before = yaml.safe_load(before_raw) if before_raw else {}
+              if not same(before.get("dependencies"), after.get("dependencies")):
+                  prod_changed = True
+              if not same(before.get("dev_dependencies"), after.get("dev_dependencies")):
+                  den_changed = True
+
+          for path in ["scripts/branding/package.json", "scripts/web_smoke/package.json"]:
+              before_raw, after_path = show(path), Path(path)
+              if not after_path.exists():
+                  continue
+              after = json.loads(after_path.read_text(encoding="utf-8"))
+              before = json.loads(before_raw) if before_raw else {}
+              for key in ("dependencies", "optionalDependencies", "peerDependencies"):
+                  if not same(before.get(key), after.get(key)):
+                      prod_changed = True
+              if not same(before.get("devDependencies"), after.get("devDependencies")):
+                  den_changed = True
+
+          print(json.dumps({"prodChanged": prod_changed, "devChanged": den_changed}))
+          PY
+          )"
+          echo "classify=${CLASSIFY}"
+          PROD="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["prodChanged"])' "${CLASSIFY}")"
+          DEV="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["devChanged"])' "${CLASSIFY}")"
+          if [ "${PROD}" = "True" ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "Production dependency ranges changed — will patch-release."
           else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            git diff -- \
-              pubspec.yaml pubspec.lock \
-              scripts/branding/package.json \
-              scripts/branding/package-lock.json \
-              scripts/web_smoke/package.json \
-              scripts/web_smoke/package-lock.json
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "Only non-production ranges changed (devChanged=${DEV}) — commit without release."
           fi
 
       - name: Analyze and test
@@ -95,7 +161,7 @@ jobs:
         working-directory: scripts/web_smoke
 
       - name: Bump patch version
-        if: steps.changes.outputs.changed == 'true'
+        if: steps.changes.outputs.release == 'true'
         id: version
         run: |
           set -euo pipefail
@@ -115,8 +181,8 @@ jobs:
           echo "version=${new_name}" >> "$GITHUB_OUTPUT"
           echo "Bumped to ${new_full} (kAppVersion ${new_name})"
 
-      - name: Commit dependency bump
-        if: steps.changes.outputs.changed == 'true'
+      - name: Commit and push (production deps)
+        if: steps.changes.outputs.release == 'true'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -129,6 +195,23 @@ jobs:
             scripts/web_smoke/package.json \
             scripts/web_smoke/package-lock.json
           git commit -m "chore(deps): nightly in-major dependency update (${{ steps.version.outputs.version }})"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Commit and push (devDependencies only)
+        if: steps.changes.outputs.changed == 'true' && steps.changes.outputs.release != 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            pubspec.yaml pubspec.lock \
+            lib/app_version.dart \
+            scripts/branding/package.json \
+            scripts/branding/package-lock.json \
+            scripts/web_smoke/package.json \
+            scripts/web_smoke/package-lock.json
+          git commit -m "chore(deps): nightly in-major dependency update (devDependencies only)"
           git pull --rebase origin main
           git push origin HEAD:main
 
@@ -163,7 +246,7 @@ jobs:
           git worktree remove --force "$SYNC_DIR"
 
       - name: Create GitHub Release
-        if: steps.changes.outputs.changed == 'true'
+        if: steps.changes.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
