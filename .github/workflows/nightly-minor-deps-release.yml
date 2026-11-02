@@ -52,7 +52,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: '26'
 
       - name: Raise in-major ranges (3-day cooldown)
         run: python scripts/update_minor_deps.py --cooldown-days "${COOLDOWN_DAYS}"
