@@ -1,7 +1,7 @@
 name: glowing_waffle
 description: Client-side TTS app that reads aloud text and websites using Kokoro and Kitten TTS.
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.1+2
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -9,15 +9,15 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.6
-  flutter_riverpod: ^3.0.0
-  webview_flutter: ^4.10.0
-  sherpa_onnx: ^1.12.26
-  path_provider: ^2.1.2
-  just_audio: ^0.10.0
+  cupertino_icons: ^1.0.9
+  flutter_riverpod: ^3.4.3
+  webview_flutter: ^4.14.1
+  sherpa_onnx: ^1.13.8
+  path_provider: ^2.1.6
+  just_audio: ^0.10.6
   archive: ^4.5.2
   # sha256 of the downloaded model archive (lib/tts/model_store.dart).
-  crypto: ^3.0.6
+  crypto: ^3.0.8
   share_plus: ^13.3.1
   shared_preferences: ^2.5.6
 
