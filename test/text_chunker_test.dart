@@ -56,7 +56,8 @@ void main() {
       expect(splitIntoChunks('...'), ['...']);
     });
 
-    test('every chunk of a longer paragraph rejoins to the normalized text', () {
+    test('every chunk of a longer paragraph rejoins to the normalized text',
+        () {
       const text = 'Alpha beta gamma. Delta epsilon zeta, eta. '
           'Theta iota kappa lambda mu. Nu xi omicron pi rho sigma. Tau.';
       final chunks = splitIntoChunks(text, maxChars: 40);

@@ -45,7 +45,8 @@ Uint8List encodeWavPcm16(
 
   for (var i = 0; i < samples.length; i++) {
     final scaled = (samples[i].clamp(-1.0, 1.0) * 32768).round();
-    out.setInt16(headerSize + i * 2, scaled.clamp(-32768, 32767), Endian.little);
+    out.setInt16(
+        headerSize + i * 2, scaled.clamp(-32768, 32767), Endian.little);
   }
   return out.buffer.asUint8List();
 }

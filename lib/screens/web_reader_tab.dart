@@ -109,7 +109,7 @@ class _WebReaderTabState extends ConsumerState<WebReaderTab> {
         }
       })();
     '''
-        .replaceAll('__CHANNEL__', _textChannelName);
+      .replaceAll('__CHANNEL__', _textChannelName);
 
   /// Completes [_pendingText], if a caller is waiting for the page text.
   void _handleExtractedText(JavaScriptMessage message) {
