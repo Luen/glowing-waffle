@@ -37,7 +37,7 @@ python3 -m venv .venv && . .venv/bin/activate
 pip install -r scripts/requirements.txt
 python scripts/smoke_tts.py --out native-smoke.wav
 python scripts/smoke_tts.py --engine kitten --out kitten-smoke.wav
-cd scripts/web_smoke && npm ci && node smoke.mjs ../../web-smoke.wav
+cd scripts/web_smoke && ONNXRUNTIME_NODE_INSTALL_CUDA=skip npm ci && node smoke.mjs ../../web-smoke.wav
 ```
 
 Run it locally:

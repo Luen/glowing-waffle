@@ -27,7 +27,7 @@ bundle one.
 | [`sherpa_onnx` + `sherpa_onnx_*`](https://pub.dev/packages/sherpa_onnx) Flutter packages | native | Apache-2.0 |
 | [ONNX Runtime](https://github.com/microsoft/onnxruntime) (linked into the sherpa-onnx native libraries) | native | MIT |
 | **espeak-ng** (compiled into the sherpa-onnx native libraries, and its data) | native | **GPL-3.0-or-later** — see below |
-| Dart/Flutter packages (`just_audio`, `archive`, `path_provider`, `webview_flutter`, `flutter_riverpod`, `cupertino_icons`) | app | permissive (MIT / BSD-3-Clause), listed in `pubspec.lock` |
+| Dart/Flutter packages (`just_audio`, `archive`, `path_provider`, `webview_flutter`, `flutter_riverpod`, `cupertino_icons`, `material_ui`) | app | permissive (MIT / BSD-3-Clause), listed in `pubspec.lock` |
 
 ## espeak-ng (GPL-3.0-or-later)
 

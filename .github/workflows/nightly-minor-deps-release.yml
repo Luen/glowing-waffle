@@ -159,6 +159,10 @@ jobs:
         if: steps.changes.outputs.changed == 'true'
         run: npm ci
         working-directory: scripts/web_smoke
+        env:
+          # onnxruntime-node's CUDA download is a 404; the smoke test is CPU-only
+          # (issue #97).
+          ONNXRUNTIME_NODE_INSTALL_CUDA: skip
 
       - name: Bump patch version
         if: steps.changes.outputs.release == 'true'

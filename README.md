@@ -187,8 +187,10 @@ pip install -r scripts/requirements.txt
 python scripts/smoke_tts.py --out native-smoke.wav "Hello from Glowing Waffle."
 python scripts/smoke_tts.py --engine kitten --out kitten-smoke.wav
 
-# Web engine: same kokoro-js model and audio handling as web/tts_bridge.js
-cd scripts/web_smoke && npm ci && node smoke.mjs ../../web-smoke.wav
+# Web engine: same kokoro-js model and audio handling as web/tts_bridge.js.
+# CUDA is skipped because onnxruntime-node 1.21.0's CUDA download is gone and
+# the smoke test runs on the CPU EP anyway (#97).
+cd scripts/web_smoke && ONNXRUNTIME_NODE_INSTALL_CUDA=skip npm ci && node smoke.mjs ../../web-smoke.wav
 ```
 
 CI (`.github/workflows/ci.yml`) runs all of the above and uploads the WAVs as an
