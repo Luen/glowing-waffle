@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:glowing_waffle/app.dart';
@@ -12,6 +11,7 @@ import 'package:glowing_waffle/tts/model_progress.dart';
 import 'package:glowing_waffle/tts/tts_engine.dart';
 import 'package:glowing_waffle/tts/tts_models.dart';
 import 'package:glowing_waffle/widgets/playback_controls.dart';
+import 'package:material_ui/material_ui.dart';
 
 class FakeEngine extends TtsEngine {
   FakeEngine({

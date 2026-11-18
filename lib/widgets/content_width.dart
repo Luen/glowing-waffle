@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Centres [child] and caps its width, so forms stay readable in wide windows
 /// (web, macOS, tablets) instead of stretching edge to edge.
